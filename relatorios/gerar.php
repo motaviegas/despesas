@@ -96,6 +96,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatório de Orçamento - Gestão de Eventos</title>
     <link rel="stylesheet" href="../assets/css/style.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         .toggle-icon {
             color: #0056b3;
@@ -120,6 +121,15 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             width: 100%;
             margin-top: 15px;
             margin-bottom: 15px;
+        }
+        .oculto {
+            display: none;
+        }
+        .subcategoria-container {
+            padding-left: 20px;
+        }
+        .expandir {
+            cursor: pointer;
         }
     </style>
 </head>
@@ -197,7 +207,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                         <th>Budget</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="categorias-container">
                     <?php if (isset($categorias_com_totais[0])): // Total Global ?>
                         <tr class="categoria-0">
                             <td>TOTAL</td>
@@ -222,13 +232,13 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                             $classe_delta = $categoria['delta'] >= 0 ? 'positivo' : 'negativo';
                             $classe_nivel = "nivel-{$nivel}";
                             
-                            echo "<tr>";
+                            echo "<tr class='categoria-row' id='categoria-{$categoria['id']}'>";
                             echo "<td>{$categoria['numero_conta']}</td>";
                             echo "<td class='{$classe_nivel}'>";
                             
                             if ($tem_filhos) {
                                 $simbolo = $expandida ? '−' : '+';
-                                echo "<a href='?projeto_id={$projeto_id}&toggle={$categoria['id']}' class='toggle-icon'>{$simbolo}</a> ";
+                                echo "<span class='toggle-icon expandir' data-id='{$categoria['id']}'>{$simbolo}</span> ";
                             } else {
                                 echo "<span class='toggle-icon'></span>";
                             }
@@ -246,6 +256,10 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                             echo "<td>" . number_format($categoria['budget'], 2, ',', '.') . " €</td>";
                             echo "</tr>";
                             
+                            // Criar linha para subcategorias (inicialmente oculta)
+                            echo "<tr class='subcategorias-row subcategorias-{$categoria['id']} " . ($expandida ? '' : 'oculto') . "'>";
+                            echo "<td colspan='5'><div class='subcategoria-container' id='subcategoria-container-{$categoria['id']}'>";
+                            
                             // Se a categoria estiver expandida, renderizar seus filhos
                             if ($tem_filhos && $expandida) {
                                 $filhos = array_filter($categorias, function($cat) use ($categoria) {
@@ -254,6 +268,8 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                                 
                                 renderizarCategorias($filhos, $categorias_por_pai, $nivel + 1, $categorias_expandidas, $projeto_id);
                             }
+                            
+                            echo "</div></td></tr>";
                         }
                     }
                     
@@ -275,6 +291,49 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             </table>
         <?php endif; ?>
     </div>
+    
+    <script>
+    $(document).ready(function() {
+        // Manipular clique nos ícones de expansão
+        $(document).on('click', '.toggle-icon.expandir', function() {
+            var categoriaId = $(this).data('id');
+            var isExpandido = $(this).text() === '−';
+            
+            // Alternar o símbolo
+            $(this).text(isExpandido ? '+' : '−');
+            
+            // Mostrar/ocultar a linha de subcategorias
+            $('.subcategorias-' + categoriaId).toggleClass('oculto');
+            
+            // Se estiver expandindo e o container estiver vazio, carregar via AJAX
+            if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
+                $.ajax({
+                    url: '../relatorios/obter_subcategorias.php',
+                    method: 'POST',
+                    data: { 
+                        categoria_id: categoriaId,
+                        mostrar_despesas: 0
+                    },
+                    success: function(response) {
+                        $('#subcategoria-container-' + categoriaId).html(response);
+                    }
+                });
+            }
+            
+            // Atualizar o estado na sessão
+            $.post('atualizar_estado_categoria.php', {
+                projeto_id: <?php echo $projeto_id; ?>,
+                categoria_id: categoriaId,
+                expandido: !isExpandido
+            });
+        });
+        
+        // Já configurado para navegação normal
+        $('.ver-despesas').on('click', function() {
+            // O comportamento padrão já funciona
+        });
+    });
+    </script>
     
     <?php include '../includes/footer.php'; ?>
 </body>

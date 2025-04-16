@@ -350,3 +350,91 @@ footer {
 /* Cores para os valores positivos e negativos */
 .positivo { color: green; }
 .negativo { color: red; }
+
+/* Adições para o sistema de expansão de categorias */
+.oculto {
+    display: none;
+}
+
+.subcategoria-container {
+    width: 100%;
+}
+
+.expandir {
+    cursor: pointer;
+}
+
+.toggle-icon {
+    color: #0056b3;
+    cursor: pointer;
+    display: inline-block;
+    width: 20px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.ver-despesas {
+    color: #0056b3;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.linha-clara {
+    background-color: #f9f9f9;
+}
+
+.linha-escura {
+    background-color: #ffffff;
+}
+
+.despesas-container {
+    margin-top: 15px;
+    margin-bottom: 15px;
+}
+
+.sem-despesas {
+    padding: 10px;
+    color: #666;
+    font-style: italic;
+}
+
+/* Ajustes para os ícones de expansão */
+.toggle-icon.expandir {
+    transition: transform 0.2s;
+}
+
+.toggle-icon.expandir:hover {
+    color: #003d7a;
+}
+
+/* Estilos para impressão */
+@media print {
+    header, footer, .actions, .btn {
+        display: none;
+    }
+    
+    body {
+        background-color: white;
+    }
+    
+    .container {
+        width: 100%;
+        max-width: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    table {
+        page-break-inside: auto;
+    }
+    
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+    
+    .oculto {
+        display: none !important;
+    }
+}

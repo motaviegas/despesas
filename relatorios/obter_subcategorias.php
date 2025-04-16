@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
     
     // Exibir subcategorias se existirem
     if (count($subcategorias) > 0) {
-        echo '<table class="subtabela">';
+        echo '<table class="subtabela" style="width:100%;">';
         
         $contador = 0; // Contador para alternância de cores
         foreach ($subcategorias as $subcategoria) {
@@ -59,26 +59,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
             $stmt->execute();
             $tem_despesas = $stmt->fetch()['total'] > 0;
             
-            $prefixo = '';
-            if ($tem_filhos) {
-                $prefixo = '+ ';
-            } elseif ($tem_despesas) {
-                $prefixo = '+ ';
-            } else {
-                $prefixo = '- ';
-            }
-            
             // Aplicar cores alternadas
             $cor_classe = ($contador % 2 == 0) ? 'linha-clara' : 'linha-escura';
             $contador++;
             
-            echo '<tr class="categoria-' . $subcategoria['nivel'] . ' subcategoria-item ' . $cor_classe . '">';
+            echo '<tr class="categoria-row categoria-' . $subcategoria['nivel'] . ' ' . $cor_classe . '">';
             echo '<td>' . htmlspecialchars($subcategoria['numero_conta']) . '</td>';
             
-            // Adicionar classe expandir se tiver filhos ou despesas
-            $expandir_class = ($tem_filhos || $tem_despesas) ? 'expandir' : '';
-            echo '<td class="'.$expandir_class.'" data-id="' . $subcategoria['id'] . '" data-tem-despesas="' . ($tem_despesas ? '1' : '0') . '">' 
-                . $prefixo . htmlspecialchars($subcategoria['descricao']) . '</td>';
+            echo '<td class="nivel-' . $subcategoria['nivel'] . '">';
+            // Adicionar ícone de expansão se tiver filhos
+            if ($tem_filhos) {
+                echo '<span class="toggle-icon expandir" data-id="' . $subcategoria['id'] . '">+</span> ';
+            } else {
+                echo '<span class="toggle-icon"></span>';
+            }
+            
+            echo htmlspecialchars($subcategoria['descricao']);
+            
+            // Adicionar link "Ver despesas" para categorias de nível 3 ou superior
+            if ($subcategoria['nivel'] >= 3 || !$tem_filhos) {
+                echo ' <a href="?projeto_id=' . $projeto_id . '&ver_despesas=' . $subcategoria['id'] . '" class="ver-despesas">(Ver despesas)</a>';
+            }
+            
+            echo '</td>';
             
             echo '<td>' . number_format($subcategoria['total_despesas'], 2, ',', '.') . ' €</td>';
             
@@ -89,27 +92,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
             echo '<td>' . number_format($subcategoria['budget'], 2, ',', '.') . ' €</td>';
             echo '</tr>';
             
-            // Placeholder para subcategorias ou despesas
-            echo '<tr class="subcategorias-' . $subcategoria['id'] . ' oculto"><td colspan="5" class="subcategorias-container"></td></tr>';
+            // Adicionar linha para possíveis subcategorias (inicialmente oculta)
+            echo '<tr class="subcategorias-row subcategorias-' . $subcategoria['id'] . ' oculto">';
+            echo '<td colspan="5"><div class="subcategoria-container" id="subcategoria-container-' . $subcategoria['id'] . '"></div></td></tr>';
         }
         
         echo '</table>';
     }
     
-    // Exibir as despesas desta categoria se solicitado ou se não houver subcategorias
-    if ($mostrar_despesas || count($subcategorias) == 0) {
+    // Exibir as despesas desta categoria se solicitado
+    if ($mostrar_despesas) {
         $despesas = obterDespesasPorCategoria($pdo, $categoria_id);
         
         if (count($despesas) > 0) {
+            echo '<div class="despesas-container">';
             echo '<table class="despesas-tabela">';
-            echo '<tr>
+            echo '<thead><tr>
                     <th>Data</th>
                     <th>Tipo</th>
                     <th>Fornecedor</th>
                     <th>Descrição</th>
                     <th>Valor</th>
                     <th>Anexo</th>
-                  </tr>';
+                  </tr></thead><tbody>';
             
             $contador = 0; // Contador para alternância de cores
             foreach ($despesas as $despesa) {
@@ -134,9 +139,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
                 echo '</tr>';
             }
             
-            echo '</table>';
+            echo '</tbody></table>';
+            echo '</div>';
         } else {
-            echo '<div style="padding: 10px 15px;"><p>Nenhuma despesa registrada para esta categoria.</p></div>';
+            echo '<div class="sem-despesas">Nenhuma despesa registrada para esta categoria.</div>';
         }
     }
 } else {
