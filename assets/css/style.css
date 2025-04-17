@@ -339,12 +339,67 @@ footer {
     text-align: right;
 }
 
-.despesas-tabela tr.even-row {
-    background-color: #f9f9f9;
+/* Botões de ação */
+.btn-acao {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 3px;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #f8f9fa;
+    border: 1px solid #e4e7ea;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.despesas-tabela tr.odd-row {
-    background-color: #ffffff;
+.btn-acao:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.btn-acao i {
+    font-size: 14px;
+}
+
+.btn-acao.editar {
+    color: #28a745;
+}
+
+.btn-acao.editar:hover {
+    background-color: #28a745;
+    color: white;
+    border-color: #28a745;
+}
+
+.btn-acao.excluir {
+    color: #dc3545;
+}
+
+.btn-acao.excluir:hover {
+    background-color: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.btn-acao.visualizar {
+    color: #0056b3;
+}
+
+.btn-acao.visualizar:hover {
+    background-color: #0056b3;
+    color: white;
+    border-color: #0056b3;
+}
+
+/* Estilo para o container de ações */
+.acoes-container {
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end;
 }
 
 /* Cores para os valores positivos e negativos */

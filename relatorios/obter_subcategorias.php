@@ -113,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
                     <th>Fornecedor</th>
                     <th>Descrição</th>
                     <th>Valor</th>
-                    <th>Anexo</th>
+                    <th>Ações</th>
                   </tr></thead><tbody>';
             
             $contador = 0; // Contador para alternância de cores
@@ -129,12 +129,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
                 echo '<td>' . htmlspecialchars($despesa['descricao']) . '</td>';
                 echo '<td>' . number_format($despesa['valor'], 2, ',', '.') . ' €</td>';
                 
+                // Links para ações: anexo, editar e excluir
+                echo '<td>';
+                
                 // Link para o anexo, se existir
                 if ($despesa['anexo_path']) {
-                    echo '<td><a href="../assets/arquivos/' . htmlspecialchars($despesa['anexo_path']) . '" target="_blank" class="anexo-link">Ver fatura</a></td>';
+                    echo '<a href="../assets/arquivos/' . htmlspecialchars($despesa['anexo_path']) . '" target="_blank" class="anexo-link" title="Ver fatura"><i class="fa fa-file-pdf-o"></i> Fatura</a> ';
                 } else {
-                    echo '<td>-</td>';
+                    echo '<span class="no-anexo">-</span> ';
                 }
+                
+                // Adicionar links para editar e excluir
+                echo '<a href="../despesas/editar.php?projeto_id=' . $projeto_id . '&despesa_id=' . $despesa['id'] . '" class="btn-acao editar" title="Editar despesa"><i class="fa fa-pencil"></i></a> ';
+                echo '<a href="../despesas/excluir.php?projeto_id=' . $projeto_id . '&despesa_id=' . $despesa['id'] . '" class="btn-acao excluir" title="Excluir despesa"><i class="fa fa-trash"></i></a>';
+                
+                echo '</td>';
                 
                 echo '</tr>';
             }

@@ -4,6 +4,7 @@ require_once '../includes/functions.php';
 verificarLogin();
 
 $projeto_id = isset($_GET['projeto_id']) ? intval($_GET['projeto_id']) : 0;
+$mensagem = isset($_GET['mensagem']) ? $_GET['mensagem'] : '';
 
 // Verificar se o projeto existe
 $stmt = $pdo->prepare("SELECT id, nome FROM projetos WHERE id = :id");
@@ -150,6 +151,7 @@ $total_despesas = $resultado_total['total'];
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Listar Despesas - Gestão de Eventos</title>
     <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 </head>
 <body>
     <?php include '../includes/header.php'; ?>
@@ -158,9 +160,14 @@ $total_despesas = $resultado_total['total'];
         <h1>Listar Despesas</h1>
         <h2>Projeto: <?php echo htmlspecialchars($projeto['nome']); ?></h2>
         
+        <?php if (!empty($mensagem)): ?>
+            <div class="alert alert-info"><?php echo $mensagem; ?></div>
+        <?php endif; ?>
+        
         <div class="actions">
             <a href="../despesas/registrar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-primary">Registrar Nova Despesa</a>
             <a href="../relatorios/gerar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-secondary">Ver Relatório</a>
+            <a href="../relatorios/historico_despesas.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-secondary">Histórico de Exclusões</a>
             <a href="../projetos/ver.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-secondary">Detalhes do Projeto</a>
         </div>
         
@@ -230,7 +237,7 @@ $total_despesas = $resultado_total['total'];
                         <th>Tipo</th>
                         <th>Descrição</th>
                         <th>Valor</th>
-                        <th>Anexo</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -244,10 +251,13 @@ $total_despesas = $resultado_total['total'];
                             <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
                             <td>
                                 <?php if ($despesa['anexo_path']): ?>
-                                    <a href="../assets/arquivos/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver</a>
+                                    <a href="../assets/arquivos/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank" title="Ver anexo"><i class="fa fa-file-pdf-o"></i></a>
                                 <?php else: ?>
-                                    -
+                                    <span class="no-anexo">-</span>
                                 <?php endif; ?>
+                                
+                                <a href="../despesas/editar.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao editar" title="Editar despesa"><i class="fa fa-pencil"></i></a>
+                                <a href="../despesas/excluir.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao excluir" title="Excluir despesa" onclick="return confirm('Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.');"><i class="fa fa-trash"></i></a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -327,6 +337,37 @@ $total_despesas = $resultado_total['total'];
         
         .pagina-info {
             margin: 0 10px;
+        }
+        
+        .btn-acao {
+            display: inline-block;
+            margin: 0 3px;
+            cursor: pointer;
+            width: 28px;
+            height: 28px;
+            text-align: center;
+            line-height: 28px;
+            border-radius: 50%;
+            background-color: #f0f0f0;
+            transition: all 0.2s;
+        }
+        
+        .btn-acao.editar {
+            color: #28a745;
+        }
+        
+        .btn-acao.editar:hover {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-acao.excluir {
+            color: #dc3545;
+        }
+        
+        .btn-acao.excluir:hover {
+            background-color: #dc3545;
+            color: white;
         }
     </style>
     

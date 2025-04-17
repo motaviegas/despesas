@@ -96,6 +96,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatório de Orçamento - Gestão de Eventos</title>
     <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         .toggle-icon {
@@ -130,6 +131,21 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
         }
         .expandir {
             cursor: pointer;
+        }
+        .btn-acao {
+            display: inline-block;
+            margin: 0 3px;
+            color: #0056b3;
+            cursor: pointer;
+        }
+        .btn-acao.editar {
+            color: #28a745;
+        }
+        .btn-acao.excluir {
+            color: #dc3545;
+        }
+        .anexo-link {
+            margin-right: 10px;
         }
     </style>
 </head>
@@ -166,7 +182,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                                 <th>Fornecedor</th>
                                 <th>Descrição</th>
                                 <th>Valor</th>
-                                <th>Anexo</th>
+                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -181,10 +197,13 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                                 <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
                                 <td>
                                     <?php if (!empty($despesa['anexo_path'])): ?>
-                                        <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank">Fatura</a>
+                                        <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank" title="Ver fatura"><i class="fa fa-file-pdf-o"></i> Fatura</a>
                                     <?php else: ?>
-                                        -
+                                        <span class="no-anexo">-</span>
                                     <?php endif; ?>
+                                    
+                                    <a href="../despesas/editar.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao editar" title="Editar despesa"><i class="fa fa-pencil"></i></a>
+                                    <a href="../despesas/excluir.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao excluir" title="Excluir despesa"><i class="fa fa-trash"></i></a>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -331,6 +350,13 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
         // Já configurado para navegação normal
         $('.ver-despesas').on('click', function() {
             // O comportamento padrão já funciona
+        });
+        
+        // Confirmação de exclusão
+        $(document).on('click', '.btn-acao.excluir', function(e) {
+            if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
+                e.preventDefault();
+            }
         });
     });
     </script>
