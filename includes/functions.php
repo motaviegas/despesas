@@ -3,9 +3,14 @@
 function verificarLogin() {
    session_start();
    if (!isset($_SESSION['usuario_id'])) {
-       header('Location: ../login.php');
+       header('Location: ' . getBaseURL() . '/login.php');
        exit;
    }
+}
+
+function getBaseURL() {
+    global $base_url;
+    return $base_url;
 }
 
 function ehAdmin() {
@@ -52,6 +57,8 @@ function atualizarBudgetCategoria($pdo, $categoria_id, $novo_valor, $usuario_id,
    
    // Atualizar categorias pai recursivamente
    atualizarBudgetCategoriasPai($pdo, $categoria_id, $novo_valor - $valor_anterior, $usuario_id);
+   
+   return true;
 }
 
 function atualizarBudgetCategoriasPai($pdo, $categoria_id, $diferenca, $usuario_id) {
@@ -96,44 +103,86 @@ function atualizarBudgetCategoriasPai($pdo, $categoria_id, $diferenca, $usuario_
 
 // Funções relacionadas à importação do orçamento
 function processarImportacaoCSV($pdo, $arquivo, $projeto_id, $usuario_id) {
-   $handle = fopen($arquivo, "r");
-   if ($handle !== FALSE) {
-       // Pular cabeçalho
-       fgetcsv($handle, 1000, "\t");
-       
-       $categorias = [];
-       
-       while (($data = fgetcsv($handle, 1000, "\t")) !== FALSE) {
-           if (count($data) >= 3) {
-               $numero_conta = trim($data[0]);
-               $descricao = trim($data[1]);
-               $budget = str_replace(['€', '.', ','], ['', '', '.'], trim($data[2]));
-               $budget = floatval($budget);
-               
-               // Determinar nível
-               $nivel = substr_count($numero_conta, '.') + 1;
-               
-               // Encontrar categoria pai
-               $categoria_pai_id = null;
-               if ($nivel > 1) {
-                   $partes = explode('.', $numero_conta);
-                   array_pop($partes);
-                   $numero_pai = implode('.', $partes);
-                   
-                   if (isset($categorias[$numero_pai])) {
-                       $categoria_pai_id = $categorias[$numero_pai];
-                   }
-               }
-               
-               // Inserir categoria e armazenar ID
-               $id = inserirCategoria($pdo, $projeto_id, $numero_conta, $descricao, $budget, $categoria_pai_id, $nivel);
-               $categorias[$numero_conta] = $id;
+   $pdo->beginTransaction();
+   
+   try {
+       $handle = fopen($arquivo, "r");
+       if ($handle !== FALSE) {
+           // Detectar o delimitador (tab, ponto e vírgula ou vírgula)
+           $primeira_linha = fgets($handle, 4096);
+           rewind($handle);
+           
+           $delimitador = "\t"; // Padrão é tab
+           if (strpos($primeira_linha, ';') !== false) {
+               $delimitador = ';';
+           } elseif (strpos($primeira_linha, ',') !== false) {
+               $delimitador = ',';
            }
+           
+           // Pular cabeçalho
+           fgetcsv($handle, 1000, $delimitador);
+           
+           $categorias = [];
+           $linha = 1;
+           
+           while (($data = fgetcsv($handle, 1000, $delimitador)) !== FALSE) {
+               $linha++;
+               
+               if (count($data) >= 3) {
+                   $numero_conta = trim($data[0]);
+                   $descricao = trim($data[1]);
+                   
+                   // Limpar e converter o valor do orçamento
+                   $budget_str = trim($data[2]);
+                   $budget_str = preg_replace('/[^\d,\.\-]/', '', $budget_str); // Remove tudo exceto números, vírgulas, pontos e sinal de menos
+                   $budget_str = str_replace(',', '.', $budget_str); // Converte vírgula para ponto
+                   
+                   // Garantir que o valor é um número válido
+                   if (!is_numeric($budget_str)) {
+                       throw new Exception("Erro na linha $linha: valor de orçamento inválido '$budget_str'");
+                   }
+                   
+                   $budget = floatval($budget_str);
+                   
+                   // Determinar nível
+                   $nivel = substr_count($numero_conta, '.') + 1;
+                   
+                   // Encontrar categoria pai
+                   $categoria_pai_id = null;
+                   if ($nivel > 1) {
+                       $partes = explode('.', $numero_conta);
+                       array_pop($partes);
+                       $numero_pai = implode('.', $partes);
+                       
+                       if (isset($categorias[$numero_pai])) {
+                           $categoria_pai_id = $categorias[$numero_pai];
+                       } else {
+                           throw new Exception("Erro na linha $linha: categoria pai ($numero_pai) não encontrada para ($numero_conta)");
+                       }
+                   }
+                   
+                   // Inserir categoria e armazenar ID
+                   $id = inserirCategoria($pdo, $projeto_id, $numero_conta, $descricao, $budget, $categoria_pai_id, $nivel);
+                   $categorias[$numero_conta] = $id;
+               }
+           }
+           fclose($handle);
+           
+           // Verificar se não importamos nada
+           if (empty($categorias)) {
+               throw new Exception("Nenhuma categoria válida foi encontrada no arquivo.");
+           }
+           
+           $pdo->commit();
+           return true;
        }
-       fclose($handle);
-       return true;
+       
+       throw new Exception("Não foi possível abrir o arquivo.");
+   } catch (Exception $e) {
+       $pdo->rollBack();
+       $_SESSION['erro_importacao'] = $e->getMessage();
+       return false;
    }
-   return false;
 }
 
 // Funções relacionadas às despesas
@@ -155,13 +204,10 @@ function registrarDespesa($pdo, $projeto_id, $categoria_id, $fornecedor_nome, $t
    $stmt->bindParam(':anexo_path', $anexo_path, PDO::PARAM_STR);
    $stmt->execute();
    
-   // Após registrar a despesa, atualizar as somas nas categorias pai
-   atualizarSomasDespesasCategoriasPai($pdo, $categoria_id, $valor, $usuario_id);
-   
    return $pdo->lastInsertId();
 }
 
-// Nova função para atualizar as somas de despesas nas categorias pai
+// Função para atualizar as somas de despesas nas categorias pai
 function atualizarSomasDespesasCategoriasPai($pdo, $categoria_id, $valor_despesa, $usuario_id) {
    // Encontrar categoria pai
    $stmt = $pdo->prepare("SELECT categoria_pai_id FROM categorias WHERE id = :id");
@@ -179,7 +225,7 @@ function atualizarSomasDespesasCategoriasPai($pdo, $categoria_id, $valor_despesa
 
 function obterOuCriarFornecedor($pdo, $nome) {
    // Verificar se já existe
-   $stmt = $pdo->prepare("SELECT id FROM fornecedores WHERE nome = :nome");
+   $stmt = $pdo->prepare("SELECT id FROM fornecedores WHERE LOWER(nome) = LOWER(:nome)");
    $stmt->bindParam(':nome', $nome, PDO::PARAM_STR);
    $stmt->execute();
    $fornecedor = $stmt->fetch();
@@ -272,7 +318,6 @@ function calcularTotaisCategoriasDespesas($categorias) {
        if (isset($categorias_por_pai[$id])) {
            // Esta é uma categoria pai - vamos recalcular despesas e budget
            $categorias_por_id[$id]['total_despesas'] = 0;
-           $categorias_por_id[$id]['budget'] = 0;
        }
    }
    
@@ -283,21 +328,22 @@ function calcularTotaisCategoriasDespesas($categorias) {
                // Se for uma categoria folha (sem filhos) ou já tivermos processado seus filhos:
                if (!isset($categorias_por_pai[$categoria_id])) {
                    // É uma categoria folha (sem filhos)
-                   // Seus valores já estão corretos, não precisamos fazer nada
+                   // Seus valores já estão corretos, só calculamos o delta
+                   $categorias_por_id[$categoria_id]['delta'] = 
+                       $categorias_por_id[$categoria_id]['budget'] - 
+                       $categorias_por_id[$categoria_id]['total_despesas'];
                } else {
-                   // É uma categoria pai - somar valores dos filhos
+                   // É uma categoria pai - somar valores dos filhos para despesas
                    $total_despesas = 0;
-                   $total_budget = 0;
                    
                    foreach ($categorias_por_pai[$categoria_id] as $filho_id) {
                        $total_despesas += $categorias_por_id[$filho_id]['total_despesas'];
-                       $total_budget += $categorias_por_id[$filho_id]['budget'];
                    }
                    
                    // Atualizar os totais
                    $categorias_por_id[$categoria_id]['total_despesas'] = $total_despesas;
-                   $categorias_por_id[$categoria_id]['budget'] = $total_budget;
-                   $categorias_por_id[$categoria_id]['delta'] = $total_budget - $total_despesas;
+                   $categorias_por_id[$categoria_id]['delta'] = 
+                       $categorias_por_id[$categoria_id]['budget'] - $total_despesas;
                }
            }
        }
@@ -349,18 +395,30 @@ function obterDespesasPorCategoria($pdo, $categoria_id) {
 function gerarCSVRelatorio($pdo, $projeto_id, $categorias_despesas) {
    $output = fopen('php://output', 'w');
    
+   // UTF-8 BOM para Excel reconhecer corretamente caracteres acentuados
+   fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+   
    // Cabeçalho
-   fputcsv($output, ['Nr de conta', 'DESCRIÇÃO DA RUBRICA', 'Tot Despesa', 'Delta Budget', 'Budget']);
+   fputcsv($output, ['Nr de conta', 'DESCRIÇÃO DA RUBRICA', 'Tot Despesa', 'Delta Budget', 'Budget'], ';');
+   
+   // Organizar as categorias pelo número da conta para uma visualização mais lógica
+   $categorias_ordenadas = $categorias_despesas;
+   usort($categorias_ordenadas, function($a, $b) {
+       if ($a['id'] === 0) return -1; // Total global sempre primeiro
+       if ($b['id'] === 0) return 1;
+       
+       return strnatcmp($a['numero_conta'], $b['numero_conta']);
+   });
    
    // Dados
-   foreach ($categorias_despesas as $categoria) {
+   foreach ($categorias_ordenadas as $categoria) {
        fputcsv($output, [
            $categoria['numero_conta'],
            $categoria['descricao'],
-           $categoria['total_despesas'],
-           $categoria['delta'],
-           $categoria['budget']
-       ]);
+           number_format($categoria['total_despesas'], 2, ',', '.'),
+           number_format($categoria['delta'], 2, ',', '.'),
+           number_format($categoria['budget'], 2, ',', '.')
+       ], ';');
    }
    
    fclose($output);
@@ -439,4 +497,90 @@ function obterHistoricoExclusoes($pdo, $projeto_id, $tipo_registro = null) {
    $stmt->execute();
    return $stmt->fetchAll();
 }
-?>
+
+// Função para obter resumo do projeto com totais, estatísticas e alertas
+function obterResumoProjeto($pdo, $projeto_id) {
+    // Obter dados básicos do projeto
+    $stmt = $pdo->prepare("SELECT id, nome, descricao, data_criacao FROM projetos WHERE id = :id");
+    $stmt->bindParam(':id', $projeto_id, PDO::PARAM_INT);
+    $stmt->execute();
+    $projeto = $stmt->fetch();
+    
+    if (!$projeto) {
+        return false;
+    }
+    
+    // Obter estatísticas financeiras
+    $stmt = $pdo->prepare("
+        SELECT 
+            COUNT(DISTINCT c.id) as total_categorias,
+            COUNT(DISTINCT d.id) as total_despesas,
+            COUNT(DISTINCT f.id) as total_fornecedores,
+            COALESCE(SUM(d.valor), 0) as soma_despesas,
+            (SELECT COALESCE(SUM(budget), 0) FROM categorias WHERE projeto_id = :projeto_id AND nivel = 1) as orcamento_total
+        FROM categorias c
+        LEFT JOIN despesas d ON c.id = d.categoria_id AND d.projeto_id = :projeto_id
+        LEFT JOIN fornecedores f ON d.fornecedor_id = f.id
+        WHERE c.projeto_id = :projeto_id2
+    ");
+    $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+    $stmt->bindParam(':projeto_id2', $projeto_id, PDO::PARAM_INT);
+    $stmt->execute();
+    $estatisticas = $stmt->fetch();
+    
+    // Calcular valores derivados
+    $estatisticas['orcamento_remanescente'] = $estatisticas['orcamento_total'] - $estatisticas['soma_despesas'];
+    $estatisticas['percentagem_execucao'] = ($estatisticas['orcamento_total'] > 0) ? 
+        ($estatisticas['soma_despesas'] / $estatisticas['orcamento_total']) * 100 : 0;
+    
+    // Categorias com maior execução (acima de 90%)
+    $stmt = $pdo->prepare("
+        SELECT c.id, c.numero_conta, c.descricao, c.budget,
+               COALESCE(SUM(d.valor), 0) as total_despesas,
+               (COALESCE(SUM(d.valor), 0) / c.budget * 100) as percentagem
+        FROM categorias c
+        LEFT JOIN despesas d ON c.id = d.categoria_id
+        WHERE c.projeto_id = :projeto_id AND c.budget > 0
+        GROUP BY c.id
+        HAVING percentagem >= 90
+        ORDER BY percentagem DESC
+        LIMIT 5
+    ");
+    $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+    $stmt->execute();
+    $estatisticas['categorias_criticas'] = $stmt->fetchAll();
+    
+    // Últimas 5 despesas registradas
+    $stmt = $pdo->prepare("
+        SELECT d.id, d.data_despesa, d.tipo, f.nome as fornecedor, c.numero_conta, c.descricao as categoria,
+               d.descricao, d.valor, d.data_registro
+        FROM despesas d
+        JOIN categorias c ON d.categoria_id = c.id
+        JOIN fornecedores f ON d.fornecedor_id = f.id
+        WHERE d.projeto_id = :projeto_id
+        ORDER BY d.data_registro DESC
+        LIMIT 5
+    ");
+    $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+    $stmt->execute();
+    $estatisticas['ultimas_despesas'] = $stmt->fetchAll();
+    
+    // Fornecedores mais frequentes
+    $stmt = $pdo->prepare("
+        SELECT f.nome, COUNT(d.id) as total_lancamentos, SUM(d.valor) as valor_total
+        FROM despesas d
+        JOIN fornecedores f ON d.fornecedor_id = f.id
+        WHERE d.projeto_id = :projeto_id
+        GROUP BY f.id
+        ORDER BY total_lancamentos DESC
+        LIMIT 5
+    ");
+    $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+    $stmt->execute();
+    $estatisticas['fornecedores_frequentes'] = $stmt->fetchAll();
+    
+    // Combinar tudo em um único objeto
+    $resumo = array_merge($projeto, $estatisticas);
+    
+    return $resumo;
+}

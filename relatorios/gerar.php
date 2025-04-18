@@ -49,6 +49,33 @@ if (isset($_GET['toggle'])) {
 $categorias = obterCategoriasDespesas($pdo, $projeto_id);
 $categorias_com_totais = calcularTotaisCategoriasDespesas($categorias);
 
+// Calcular a porcentagem global de execução do orçamento
+$orcamento_global = isset($categorias_com_totais[0]['budget']) ? $categorias_com_totais[0]['budget'] : 0;
+$despesas_global = isset($categorias_com_totais[0]['total_despesas']) ? $categorias_com_totais[0]['total_despesas'] : 0;
+$percentagem_execucao = ($orcamento_global > 0) ? 
+    ($despesas_global / $orcamento_global) * 100 : 0;
+
+// Determinar a classe da barra de progresso com base na percentagem
+if ($percentagem_execucao <= 50) {
+    $barra_classe = "verde";
+    $barra_largura = $percentagem_execucao * 2; // Dobro do valor para ocupar metade quando chegar a 50%
+} elseif ($percentagem_execucao <= 75) {
+    $barra_classe = "amarelo";
+    $barra_largura = $percentagem_execucao;
+} elseif ($percentagem_execucao <= 95) {
+    $barra_classe = "laranja";
+    $barra_largura = $percentagem_execucao;
+} else {
+    if ($percentagem_execucao > 100) {
+        $barra_classe = "vermelho-intenso";
+        $saldo_classe = "ultrapassado";
+    } else {
+        $barra_classe = "vermelho";
+        $saldo_classe = "";
+    }
+    $barra_largura = min($percentagem_execucao, 100); // Limitar a 100% para exibição
+}
+
 // Organizar categorias por pai para facilitar a renderização
 $categorias_por_pai = [];
 foreach ($categorias_com_totais as $categoria) {
@@ -67,10 +94,39 @@ if ($ver_despesas_id > 0) {
     $despesas_categoria = obterDespesasPorCategoria($pdo, $ver_despesas_id);
     
     // Obter informações da categoria para exibir no título
-    $stmt = $pdo->prepare("SELECT numero_conta, descricao FROM categorias WHERE id = :id");
+    $stmt = $pdo->prepare("SELECT numero_conta, descricao, budget FROM categorias WHERE id = :id");
     $stmt->bindParam(':id', $ver_despesas_id, PDO::PARAM_INT);
     $stmt->execute();
     $categoria_despesas = $stmt->fetch();
+    
+    // Calcular total das despesas para esta categoria
+    $total_despesas_categoria = 0;
+    foreach ($despesas_categoria as $despesa) {
+        $total_despesas_categoria += $despesa['valor'];
+    }
+    
+    // Calcular percentagem de execução desta categoria
+    $percentagem_categoria = ($categoria_despesas['budget'] > 0) ? 
+        ($total_despesas_categoria / $categoria_despesas['budget']) * 100 : 0;
+        
+    // Determinar a classe da barra de progresso para esta categoria
+    if ($percentagem_categoria <= 50) {
+        $barra_cat_classe = "verde";
+        $barra_cat_largura = $percentagem_categoria * 2;
+    } elseif ($percentagem_categoria <= 75) {
+        $barra_cat_classe = "amarelo";
+        $barra_cat_largura = $percentagem_categoria;
+    } elseif ($percentagem_categoria <= 95) {
+        $barra_cat_classe = "laranja";
+        $barra_cat_largura = $percentagem_categoria;
+    } else {
+        if ($percentagem_categoria > 100) {
+            $barra_cat_classe = "vermelho-intenso";
+        } else {
+            $barra_cat_classe = "vermelho";
+        }
+        $barra_cat_largura = min($percentagem_categoria, 100);
+    }
 }
 
 // Exportar para CSV se solicitado
@@ -99,53 +155,128 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        .toggle-icon {
-            color: #0056b3;
-            cursor: pointer;
-            display: inline-block;
-            width: 20px;
+        .relatorio-header {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .resumo-orcamento {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }
+        
+        .resumo-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
             text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .resumo-titulo {
+            font-size: 16px;
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        
+        .resumo-valor {
+            font-size: 24px;
             font-weight: bold;
         }
-        .ver-despesas {
-            color: #0056b3;
-            text-decoration: underline;
-            cursor: pointer;
-            margin-left: 10px;
+        
+        .detalhes-categoria {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
-        .nivel-1 { font-weight: bold; }
-        .nivel-2 { padding-left: 20px; }
-        .nivel-3 { padding-left: 40px; }
-        .nivel-4 { padding-left: 60px; }
-        .nivel-5 { padding-left: 80px; }
-        .despesas-tabela {
-            width: 100%;
-            margin-top: 15px;
-            margin-bottom: 15px;
+        
+        .despesa-item {
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
         }
-        .oculto {
-            display: none;
+        
+        .despesa-item:hover {
+            background-color: #f8f9fa;
         }
-        .subcategoria-container {
-            padding-left: 20px;
+        
+        .despesa-item:last-child {
+            border-bottom: none;
         }
-        .expandir {
-            cursor: pointer;
-        }
-        .btn-acao {
-            display: inline-block;
-            margin: 0 3px;
-            color: #0056b3;
-            cursor: pointer;
-        }
-        .btn-acao.editar {
-            color: #28a745;
-        }
-        .btn-acao.excluir {
-            color: #dc3545;
-        }
+        
         .anexo-link {
+            display: inline-flex;
+            align-items: center;
+            color: #2062b7;
+            font-size: 14px;
             margin-right: 10px;
+            text-decoration: none;
+        }
+        
+        .anexo-link i {
+            margin-right: 5px;
+        }
+        
+        .anexo-link:hover {
+            text-decoration: underline;
+        }
+        
+        .botoes-fixos {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .botao-flutuante {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #2062b7;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 24px;
+            text-decoration: none;
+        }
+        
+        .botao-flutuante:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.25);
+        }
+        
+        .botao-flutuante.secundario {
+            background-color: #6c757d;
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+        }
+        
+        .subtitulo-secao {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .relatorio-acoes {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
     </style>
 </head>
@@ -153,25 +284,83 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
     <?php include '../includes/header.php'; ?>
     
     <div class="container">
-        <h1>Relatório de Orçamento</h1>
-        <h2>Projeto: <?php echo htmlspecialchars($projeto['nome']); ?></h2>
-        
-        <?php if (!empty($mensagem)): ?>
-            <div class="alert alert-info"><?php echo $mensagem; ?></div>
-        <?php endif; ?>
-        
-        <div class="actions">
-            <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=csv" class="btn">Exportar CSV</a>
-            <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=excel" class="btn">Exportar Excel</a>
-            <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">Editar Orçamento</a>
-            <a href="../despesas/registrar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">Nova Despesa</a>
-            <a href="../orcamento/importar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">Importar Correção</a>
-            <a href="../projetos/ver.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">Detalhes</a>
+        <div class="relatorio-header">
+            <h1>Relatório de Orçamento</h1>
+            <h2><?php echo htmlspecialchars($projeto['nome']); ?></h2>
+            
+            <?php if (!empty($mensagem)): ?>
+                <div class="alert alert-info"><?php echo $mensagem; ?></div>
+            <?php endif; ?>
+            
+            <?php if (isset($categorias_com_totais[0])): // Se temos o total global ?>
+                <div class="resumo-orcamento">
+                    <div class="resumo-card">
+                        <div class="resumo-titulo">Total de Despesas</div>
+                        <div class="resumo-valor"><?php echo number_format($categorias_com_totais[0]['total_despesas'], 2, ',', '.'); ?> €</div>
+                    </div>
+                    
+                    <div class="resumo-card">
+                        <div class="resumo-titulo">Orçamento Remanescente</div>
+                        <div class="resumo-valor <?php echo $categorias_com_totais[0]['delta'] >= 0 ? 'positivo' : 'negativo ' . $saldo_classe; ?>">
+                            <?php echo number_format($categorias_com_totais[0]['delta'], 2, ',', '.'); ?> €
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-bar <?php echo $barra_classe; ?>" style="width: <?php echo $barra_largura; ?>%"></div>
+                            <span class="progress-text"><?php echo number_format($percentagem_execucao, 1, ',', '.'); ?>% Executado</span>
+                        </div>
+                    </div>
+                    
+                    <div class="resumo-card">
+                        <div class="resumo-titulo">Orçamento Total</div>
+                        <div class="resumo-valor"><?php echo number_format($categorias_com_totais[0]['budget'], 2, ',', '.'); ?> €</div>
+                    </div>
+                </div>
+            <?php endif; ?>
+            
+            <div class="relatorio-acoes">
+                <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=csv" class="btn">
+                    <i class="fa fa-file-text-o"></i> Exportar CSV
+                </a>
+                <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=excel" class="btn">
+                    <i class="fa fa-file-excel-o"></i> Exportar Excel
+                </a>
+                <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
+                    <i class="fa fa-pencil"></i> Editar Orçamento
+                </a>
+                <a href="../despesas/listar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
+                    <i class="fa fa-list"></i> Listar Despesas
+                </a>
+            </div>
         </div>
         
         <?php if ($ver_despesas_id > 0 && isset($categoria_despesas)): ?>
-            <div class="despesas-container">
-                <h3>Despesas: <?php echo htmlspecialchars($categoria_despesas['numero_conta'] . ' - ' . $categoria_despesas['descricao']); ?></h3>
+            <div class="detalhes-categoria">
+                <div class="subtitulo-secao">
+                    <h3>Despesas: <?php echo htmlspecialchars($categoria_despesas['numero_conta'] . ' - ' . $categoria_despesas['descricao']); ?></h3>
+                    <a href="?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
+                        <i class="fa fa-arrow-left"></i> Voltar ao Relatório
+                    </a>
+                </div>
+                
+                <div class="resumo-orcamento">
+                    <div class="resumo-card">
+                        <div class="resumo-titulo">Total Despesas</div>
+                        <div class="resumo-valor"><?php echo number_format($total_despesas_categoria, 2, ',', '.'); ?> €</div>
+                    </div>
+                    
+                    <div class="resumo-card">
+                        <div class="resumo-titulo">Orçamento da Categoria</div>
+                        <div class="resumo-valor"><?php echo number_format($categoria_despesas['budget'], 2, ',', '.'); ?> €</div>
+                    </div>
+                    
+                    <div class="resumo-card">
+                        <div class="resumo-titulo">Execução do Orçamento</div>
+                        <div class="progress-container">
+                            <div class="progress-bar <?php echo $barra_cat_classe; ?>" style="width: <?php echo $barra_cat_largura; ?>%"></div>
+                            <span class="progress-text"><?php echo number_format($percentagem_categoria, 1, ',', '.'); ?>%</span>
+                        </div>
+                    </div>
+                </div>
                 
                 <?php if (count($despesas_categoria) > 0): ?>
                     <table class="despesas-tabela">
@@ -189,7 +378,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                             <?php foreach ($despesas_categoria as $index => $despesa): 
                                 $classe = $index % 2 == 0 ? 'even-row' : 'odd-row';
                             ?>
-                            <tr class="<?php echo $classe; ?>">
+                            <tr class="despesa-item <?php echo $classe; ?>">
                                 <td><?php echo date('d/m/Y', strtotime($despesa['data_despesa'])); ?></td>
                                 <td><?php echo ucfirst($despesa['tipo']); ?></td>
                                 <td><?php echo htmlspecialchars($despesa['fornecedor']); ?></td>
@@ -197,23 +386,27 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                                 <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
                                 <td>
                                     <?php if (!empty($despesa['anexo_path'])): ?>
-                                        <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank" title="Ver fatura"><i class="fa fa-file-pdf-o"></i> Fatura</a>
+                                        <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank" class="anexo-link" title="Ver fatura">
+                                            <i class="fa fa-file-pdf-o"></i> Fatura
+                                        </a>
                                     <?php else: ?>
                                         <span class="no-anexo">-</span>
                                     <?php endif; ?>
                                     
-                                    <a href="../despesas/editar.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao editar" title="Editar despesa"><i class="fa fa-pencil"></i></a>
-                                    <a href="../despesas/excluir.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao excluir" title="Excluir despesa"><i class="fa fa-trash"></i></a>
+                                    <a href="../despesas/editar.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao editar" title="Editar despesa">
+                                        <i class="fa fa-pencil"></i>
+                                    </a>
+                                    <a href="../despesas/excluir.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao excluir" title="Excluir despesa">
+                                        <i class="fa fa-trash"></i>
+                                    </a>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 <?php else: ?>
-                    <p>Não há despesas registradas para esta categoria.</p>
+                    <div class="sem-despesas">Não há despesas registradas para esta categoria.</div>
                 <?php endif; ?>
-                
-                <a href="?projeto_id=<?php echo $projeto_id; ?>" class="btn">Voltar ao Relatório</a>
             </div>
         <?php else: ?>
             <table class="relatorio">
@@ -251,6 +444,21 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                             $classe_delta = $categoria['delta'] >= 0 ? 'positivo' : 'negativo';
                             $classe_nivel = "nivel-{$nivel}";
                             
+                            // Calcular percentagem de execução para esta categoria
+                            $percentagem_cat = ($categoria['budget'] > 0) ? 
+                                ($categoria['total_despesas'] / $categoria['budget']) * 100 : 0;
+                                
+                            // Determinar a cor baseada na percentagem
+                            if ($percentagem_cat <= 50) {
+                                $cor_percentagem = "#28a745"; // Verde
+                            } elseif ($percentagem_cat <= 75) {
+                                $cor_percentagem = "#ffc107"; // Amarelo
+                            } elseif ($percentagem_cat <= 95) {
+                                $cor_percentagem = "#fd7e14"; // Laranja
+                            } else {
+                                $cor_percentagem = "#dc3545"; // Vermelho
+                            }
+                            
                             echo "<tr class='categoria-row' id='categoria-{$categoria['id']}'>";
                             echo "<td>{$categoria['numero_conta']}</td>";
                             echo "<td class='{$classe_nivel}'>";
@@ -264,13 +472,20 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                             
                             echo htmlspecialchars($categoria['descricao']);
                             
-                            // Adicionar link "Ver despesas" para categorias de nível 3 ou superior
-                            if ($nivel >= 3) {
-                                echo " <a href='?projeto_id={$projeto_id}&ver_despesas={$categoria['id']}' class='ver-despesas'>(Ver despesas)</a>";
+                            // Adicionar link "Ver despesas" para categorias de nível 3 ou superior ou categorias sem filhos
+                            if ($nivel >= 3 || !$tem_filhos) {
+                                echo " <a href='?projeto_id={$projeto_id}&ver_despesas={$categoria['id']}' class='ver-despesas'>
+                                    <i class='fa fa-eye'></i> Ver despesas
+                                </a>";
                             }
                             
                             echo "</td>";
-                            echo "<td>" . number_format($categoria['total_despesas'], 2, ',', '.') . " €</td>";
+                            
+                            // Coluna Total Despesas com percentagem em tooltip
+                            echo "<td title='{$percentagem_cat}% do orçamento'>";
+                            echo "<span style='color:{$cor_percentagem}; margin-right:5px;'>●</span>";
+                            echo number_format($categoria['total_despesas'], 2, ',', '.') . " €</td>";
+                            
                             echo "<td class='{$classe_delta}'>" . number_format($categoria['delta'], 2, ',', '.') . " €</td>";
                             echo "<td>" . number_format($categoria['budget'], 2, ',', '.') . " €</td>";
                             echo "</tr>";
@@ -309,6 +524,19 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                 </tbody>
             </table>
         <?php endif; ?>
+        
+        <!-- Botões flutuantes fixos no canto inferior direito -->
+        <div class="botoes-fixos">
+            <a href="../despesas/registrar.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante" title="Nova Despesa">
+                <i class="fa fa-plus"></i>
+            </a>
+            <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante secundario" title="Editar Orçamento">
+                <i class="fa fa-pencil"></i>
+            </a>
+            <a href="../projetos/ver.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante secundario" title="Detalhes do Projeto">
+                <i class="fa fa-info"></i>
+            </a>
+        </div>
     </div>
     
     <script>
@@ -326,6 +554,8 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             
             // Se estiver expandindo e o container estiver vazio, carregar via AJAX
             if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
+                $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
+                
                 $.ajax({
                     url: '../relatorios/obter_subcategorias.php',
                     method: 'POST',
@@ -335,6 +565,9 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                     },
                     success: function(response) {
                         $('#subcategoria-container-' + categoriaId).html(response);
+                    },
+                    error: function() {
+                        $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
                     }
                 });
             }
@@ -347,17 +580,47 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             });
         });
         
-        // Já configurado para navegação normal
-        $('.ver-despesas').on('click', function() {
-            // O comportamento padrão já funciona
-        });
-        
         // Confirmação de exclusão
         $(document).on('click', '.btn-acao.excluir', function(e) {
             if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
                 e.preventDefault();
             }
         });
+        
+        // Adicionar tooltips nos valores de execução do orçamento
+        $('.resumo-valor').each(function() {
+            if ($(this).hasClass('positivo')) {
+                $(this).attr('title', 'Orçamento dentro do limite planejado');
+            } else if ($(this).hasClass('negativo')) {
+                $(this).attr('title', 'Orçamento excedido! Atenção necessária');
+            }
+        });
+        
+        // Adicionar tooltips nas barras de progresso
+        $('.progress-container').each(function() {
+            let percentagem = $(this).find('.progress-text').text();
+            let mensagem = '';
+            
+            if (percentagem.includes('100')) {
+                mensagem = 'Orçamento totalmente utilizado';
+            } else if (percentagem.includes('>100')) {
+                mensagem = 'Orçamento excedido!';
+            } else {
+                mensagem = 'Progresso da execução orçamentária';
+            }
+            
+            $(this).attr('title', mensagem);
+        });
+        
+        // Efeito de hover nas linhas de categoria
+        $('.categoria-row').hover(
+            function() {
+                $(this).css('background-color', '#f0f7ff');
+            },
+            function() {
+                $(this).css('background-color', '');
+            }
+        );
     });
     </script>
     
