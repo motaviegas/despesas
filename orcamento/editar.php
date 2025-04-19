@@ -102,19 +102,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Obter todas as categorias do projeto
-$stmt = $pdo->prepare("
-    SELECT c.id, c.numero_conta, c.descricao, c.budget, c.nivel, c.categoria_pai_id,
-           COALESCE(SUM(d.valor), 0) as total_despesas
-    FROM categorias c
-    LEFT JOIN despesas d ON c.id = d.categoria_id
-    WHERE c.projeto_id = :projeto_id
-    GROUP BY c.id
-    ORDER BY c.numero_conta
-");
-$stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
-$stmt->execute();
-$categorias = $stmt->fetchAll();
+// Obter todas as categorias do projeto com despesas usando a função corrigida
+$categorias = obterCategoriasDespesas($pdo, $projeto_id);
+$categorias_com_totais = calcularTotaisCategoriasDespesas($categorias);
+
+// Remover o total global (id 0) para a exibição na tabela
+if (isset($categorias_com_totais[0])) {
+    unset($categorias_com_totais[0]);
+}
+
+// Ordenar por número da conta
+uasort($categorias_com_totais, function($a, $b) {
+    return strnatcmp($a['numero_conta'], $b['numero_conta']);
+});
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -141,6 +141,55 @@ $categorias = $stmt->fetchAll();
             border: 1px solid #ddd;
             border-radius: 4px;
             background-color: #f9f9f9;
+        }
+        
+        .progress-mini {
+            display: inline-block;
+            width: 50px;
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            margin-right: 8px;
+            overflow: hidden;
+            vertical-align: middle;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+        }
+        
+        .verde { background-color: #28a745; }
+        .amarelo { background-color: #ffc107; }
+        .laranja { background-color: #fd7e14; }
+        .vermelho { background-color: #dc3545; }
+        
+        .table-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .search-box {
+            position: relative;
+            width: 300px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 8px 12px;
+            padding-left: 35px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
         }
     </style>
 </head>
@@ -221,19 +270,51 @@ $categorias = $stmt->fetchAll();
         
         <h3>Categorias Atuais</h3>
         
-        <?php if (count($categorias) > 0): ?>
-            <table>
+        <div class="table-actions">
+            <div class="search-box">
+                <i class="fa fa-search search-icon"></i>
+                <input type="text" id="busca-categoria" class="search-input" placeholder="Buscar categoria...">
+            </div>
+            
+            <div>
+                <a href="../orcamento/historico.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">Ver Histórico de Alterações</a>
+            </div>
+        </div>
+        
+        <?php if (count($categorias_com_totais) > 0): ?>
+            <table id="tabela-categorias">
                 <thead>
                     <tr>
                         <th>Número</th>
                         <th>Descrição</th>
                         <th>Orçamento</th>
                         <th>Despesas</th>
+                        <th>% Exec.</th>
+                        <th>Saldo</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($categorias as $categoria): ?>
+                    <?php foreach ($categorias_com_totais as $categoria): ?>
+                        <?php 
+                            // Calcular percentagem de execução
+                            $percentagem = ($categoria['budget'] > 0) ? 
+                                ($categoria['total_despesas'] / $categoria['budget']) * 100 : 0;
+                            
+                            // Determinar a classe da barra de progresso
+                            if ($percentagem <= 50) {
+                                $classe_barra = "verde";
+                            } elseif ($percentagem <= 75) {
+                                $classe_barra = "amarelo";
+                            } elseif ($percentagem <= 95) {
+                                $classe_barra = "laranja";
+                            } else {
+                                $classe_barra = "vermelho";
+                            }
+                            
+                            // Limitar a largura a 100% para exibição
+                            $largura_barra = min($percentagem, 100);
+                        ?>
                         <tr class="categoria-<?php echo $categoria['nivel']; ?>">
                             <td><?php echo htmlspecialchars($categoria['numero_conta']); ?></td>
                             <td><?php echo htmlspecialchars($categoria['descricao']); ?></td>
@@ -245,9 +326,21 @@ $categorias = $stmt->fetchAll();
                                     <?php echo number_format($categoria['budget'], 2, ',', '.'); ?> €
                                 </span>
                             </td>
-                            <td><?php echo number_format($categoria['total_despesas'], 2, ',', '.'); ?> €</td>
+                            <td>
+                                <?php echo number_format($categoria['total_despesas'], 2, ',', '.'); ?> €
+                            </td>
+                            <td>
+                                <div class="progress-mini">
+                                    <div class="progress-fill <?php echo $classe_barra; ?>" style="width: <?php echo $largura_barra; ?>%;"></div>
+                                </div>
+                                <?php echo number_format($percentagem, 1, ',', '.'); ?>%
+                            </td>
+                            <td class="<?php echo $categoria['delta'] >= 0 ? 'positivo' : 'negativo'; ?>">
+                                <?php echo number_format($categoria['delta'], 2, ',', '.'); ?> €
+                            </td>
                             <td>
                                 <a href="../historico/ver.php?categoria_id=<?php echo $categoria['id']; ?>" class="btn btn-sm">Histórico</a>
+                                <a href="../orcamento/editar_categoria.php?projeto_id=<?php echo $projeto_id; ?>&categoria_id=<?php echo $categoria['id']; ?>" class="btn btn-sm">Editar</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -258,40 +351,74 @@ $categorias = $stmt->fetchAll();
         <?php endif; ?>
     </div>
     
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-        // Mostrar/ocultar formulário de adição de categoria
-        document.getElementById('mostrar-adicionar').addEventListener('click', function() {
-            document.getElementById('adicionar-form').style.display = 'block';
-            document.getElementById('editar-form').style.display = 'none';
-        });
-        
-        document.getElementById('cancelar-adicionar').addEventListener('click', function() {
-            document.getElementById('adicionar-form').style.display = 'none';
-        });
-        
-        // Mostrar/ocultar formulário de edição de orçamento
-        document.querySelectorAll('.editar-budget').forEach(function(element) {
-            element.addEventListener('click', function() {
-                const id = this.getAttribute('data-id');
-                const numero = this.getAttribute('data-numero');
-                const descricao = this.getAttribute('data-descricao');
-                const budget = this.getAttribute('data-budget');
+        $(document).ready(function() {
+            // Mostrar/ocultar formulário de adição de categoria
+            $('#mostrar-adicionar').click(function() {
+                $('#adicionar-form').show();
+                $('#editar-form').hide();
+            });
+            
+            $('#cancelar-adicionar').click(function() {
+                $('#adicionar-form').hide();
+            });
+            
+            // Mostrar/ocultar formulário de edição de orçamento
+            $('.editar-budget').click(function() {
+                const id = $(this).data('id');
+                const numero = $(this).data('numero');
+                const descricao = $(this).data('descricao');
+                const budget = $(this).data('budget');
                 
-                document.getElementById('categoria_id').value = id;
-                document.getElementById('categoria_info').textContent = numero + ' - ' + descricao;
-                document.getElementById('budget_atual').textContent = parseFloat(budget).toLocaleString('pt-PT', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
-                document.getElementById('novo_budget').value = budget.replace('.', ',');
+                $('#categoria_id').val(id);
+                $('#categoria_info').text(numero + ' - ' + descricao);
+                $('#budget_atual').text(parseFloat(budget).toLocaleString('pt-PT', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €');
+                $('#novo_budget').val(budget.replace('.', ','));
                 
-                document.getElementById('editar-form').style.display = 'block';
-                document.getElementById('adicionar-form').style.display = 'none';
+                $('#editar-form').show();
+                $('#adicionar-form').hide();
                 
                 // Scroll para o formulário
-                document.getElementById('editar-form').scrollIntoView({behavior: 'smooth'});
+                $('#editar-form')[0].scrollIntoView({behavior: 'smooth'});
             });
-        });
-        
-        document.getElementById('cancelar-editar').addEventListener('click', function() {
-            document.getElementById('editar-form').style.display = 'none';
+            
+            $('#cancelar-editar').click(function() {
+                $('#editar-form').hide();
+            });
+            
+            // Busca de categorias
+            $('#busca-categoria').on('input', function() {
+                const termo = $(this).val().toLowerCase().trim();
+                
+                $('#tabela-categorias tbody tr').each(function() {
+                    const numero = $(this).find('td:first').text().toLowerCase();
+                    const descricao = $(this).find('td:nth-child(2)').text().toLowerCase();
+                    
+                    if (numero.includes(termo) || descricao.includes(termo)) {
+                        $(this).show();
+                    } else {
+                        $(this).hide();
+                    }
+                });
+            });
+            
+            // Formatação do campo de orçamento
+            $('#budget, #novo_budget').on('input', function() {
+                let valor = $(this).val().replace(/[^\d,]/g, '');
+                if (valor) {
+                    // Verificar se o valor já tem uma vírgula
+                    if (valor.includes(',')) {
+                        const partes = valor.split(',');
+                        // Garantir que há no máximo 2 casas decimais
+                        if (partes[1] && partes[1].length > 2) {
+                            partes[1] = partes[1].substring(0, 2);
+                            valor = partes.join(',');
+                        }
+                    }
+                    $(this).val(valor);
+                }
+            });
         });
     </script>
     

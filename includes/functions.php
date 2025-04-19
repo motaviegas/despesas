@@ -312,11 +312,12 @@ function calcularTotaisCategoriasDespesas($categorias) {
        }
    }
    
-   // Resetar os totais de despesas e budget para categorias que têm filhos
+   // Resetar os totais de despesas para categorias que têm filhos
    // Isso garante que não contamos valores em duplicidade
    foreach ($categorias_por_id as $id => $categoria) {
        if (isset($categorias_por_pai[$id])) {
-           // Esta é uma categoria pai - vamos recalcular despesas e budget
+           // Esta é uma categoria pai - vamos recalcular despesas 
+           // (não resetamos o budget aqui, pois ele já vem correto do banco)
            $categorias_por_id[$id]['total_despesas'] = 0;
        }
    }
@@ -501,7 +502,7 @@ function obterHistoricoExclusoes($pdo, $projeto_id, $tipo_registro = null) {
 // Função para obter resumo do projeto com totais, estatísticas e alertas
 function obterResumoProjeto($pdo, $projeto_id) {
     // Obter dados básicos do projeto
-    $stmt = $pdo->prepare("SELECT id, nome, descricao, data_criacao FROM projetos WHERE id = :id");
+    $stmt = $pdo->prepare("SELECT id, nome, descricao, data_criacao, arquivado FROM projetos WHERE id = :id");
     $stmt->bindParam(':id', $projeto_id, PDO::PARAM_INT);
     $stmt->execute();
     $projeto = $stmt->fetch();
@@ -510,7 +511,7 @@ function obterResumoProjeto($pdo, $projeto_id) {
         return false;
     }
     
-    // Obter estatísticas financeiras
+    // Obter estatísticas financeiras - Corrigido para mostrar o valor do orçamento individual corretamente
     $stmt = $pdo->prepare("
         SELECT 
             COUNT(DISTINCT c.id) as total_categorias,

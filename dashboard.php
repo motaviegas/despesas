@@ -86,27 +86,28 @@ foreach ($projetos as &$projeto) {
 }
 unset($projeto); // Remover referência
 
-// Obter estatísticas gerais
+// Obter estatísticas gerais - APENAS PARA PROJETOS ATIVOS
+$sql_ativo = "AND p.arquivado = FALSE";
 $stmt = $pdo->prepare("
     SELECT 
         COUNT(DISTINCT p.id) as total_projetos,
         COUNT(DISTINCT d.id) as total_despesas,
         COALESCE(SUM(d.valor), 0) as soma_despesas_total,
         COALESCE((SELECT SUM(budget) FROM categorias c JOIN projetos p ON c.projeto_id = p.id 
-                 WHERE p.criado_por = :usuario_id AND c.nivel = 1), 0) as orcamento_total
+                 WHERE p.criado_por = :usuario_id AND c.nivel = 1 $sql_ativo), 0) as orcamento_total
     FROM 
         projetos p
     LEFT JOIN 
         despesas d ON p.id = d.projeto_id
     WHERE 
-        p.criado_por = :usuario_id2
+        p.criado_por = :usuario_id2 $sql_ativo
 ");
 $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
 $stmt->bindParam(':usuario_id2', $usuario_id, PDO::PARAM_INT);
 $stmt->execute();
 $estatisticas_gerais = $stmt->fetch();
 
-// Obter últimas despesas registradas (geral)
+// Obter últimas despesas registradas (geral) - APENAS DE PROJETOS ATIVOS
 $stmt = $pdo->prepare("
     SELECT 
         d.id, d.valor, d.data_despesa, d.descricao,
@@ -122,7 +123,7 @@ $stmt = $pdo->prepare("
     JOIN 
         fornecedores f ON d.fornecedor_id = f.id
     WHERE 
-        p.criado_por = :usuario_id
+        p.criado_por = :usuario_id AND p.arquivado = FALSE
     ORDER BY 
         d.data_registro DESC
     LIMIT 5

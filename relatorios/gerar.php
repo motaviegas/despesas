@@ -45,7 +45,7 @@ if (isset($_GET['toggle'])) {
     exit;
 }
 
-// Obter categorias e calcular totais
+// Obter categorias e calcular totais - Corrigido para exibir valores corretos
 $categorias = obterCategoriasDespesas($pdo, $projeto_id);
 $categorias_com_totais = calcularTotaisCategoriasDespesas($categorias);
 
@@ -278,6 +278,124 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             gap: 10px;
             flex-wrap: wrap;
         }
+        
+        /* Estilos específicos para a tabela do relatório */
+        .relatorio {
+            width: 100%;
+            border-collapse: collapse;
+            box-shadow: 0 0 15px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .relatorio th,
+        .relatorio td {
+            padding: 12px 15px;
+            text-align: left;
+        }
+        
+        .relatorio th {
+            background-color: #2062b7;
+            color: white;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+        }
+        
+        .relatorio td:nth-child(3),
+        .relatorio td:nth-child(4),
+        .relatorio td:nth-child(5) {
+            text-align: right;
+            font-family: 'Consolas', monospace;
+        }
+        
+        .relatorio tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .relatorio tr:hover {
+            background-color: #f0f7ff;
+        }
+        
+        .toggle-icon {
+            cursor: pointer;
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            line-height: 24px;
+            text-align: center;
+            background-color: #e9ecef;
+            color: #2062b7;
+            border-radius: 50%;
+            margin-right: 5px;
+            transition: all 0.2s;
+        }
+        
+        .toggle-icon:hover {
+            background-color: #2062b7;
+            color: white;
+        }
+        
+        .nivel-1 {
+            font-weight: bold;
+        }
+        
+        .nivel-2 {
+            padding-left: 20px;
+        }
+        
+        .nivel-3 {
+            padding-left: 40px;
+        }
+        
+        .nivel-4 {
+            padding-left: 60px;
+        }
+        
+        .nivel-5 {
+            padding-left: 80px;
+        }
+        
+        .subcategorias-row {
+            background-color: #f8f9fa;
+        }
+        
+        .subcategoria-container {
+            padding: 0 20px;
+        }
+        
+        .ver-despesas {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 13px;
+            color: #2062b7;
+            text-decoration: none;
+        }
+        
+        .ver-despesas:hover {
+            text-decoration: underline;
+        }
+        
+        /* Indicadores para as categorias */
+        .categoria-indicador {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .categoria-indicador.verde { background-color: #28a745; }
+        .categoria-indicador.amarelo { background-color: #ffc107; }
+        .categoria-indicador.laranja { background-color: #fd7e14; }
+        .categoria-indicador.vermelho { background-color: #dc3545; }
+        .categoria-indicador.vermelho-intenso { 
+            background-color: #dc3545;
+            box-shadow: 0 0 5px #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -450,13 +568,13 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                                 
                             // Determinar a cor baseada na percentagem
                             if ($percentagem_cat <= 50) {
-                                $cor_percentagem = "#28a745"; // Verde
+                                $cor_percentagem = "verde";
                             } elseif ($percentagem_cat <= 75) {
-                                $cor_percentagem = "#ffc107"; // Amarelo
+                                $cor_percentagem = "amarelo";
                             } elseif ($percentagem_cat <= 95) {
-                                $cor_percentagem = "#fd7e14"; // Laranja
+                                $cor_percentagem = "laranja";
                             } else {
-                                $cor_percentagem = "#dc3545"; // Vermelho
+                                $cor_percentagem = $percentagem_cat > 100 ? "vermelho-intenso" : "vermelho";
                             }
                             
                             echo "<tr class='categoria-row' id='categoria-{$categoria['id']}'>";
@@ -481,9 +599,9 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                             
                             echo "</td>";
                             
-                            // Coluna Total Despesas com percentagem em tooltip
+                            // Coluna Total Despesas com percentagem em tooltip e indicador visual
                             echo "<td title='{$percentagem_cat}% do orçamento'>";
-                            echo "<span style='color:{$cor_percentagem}; margin-right:5px;'>●</span>";
+                            echo "<span class='categoria-indicador {$cor_percentagem}'></span>";
                             echo number_format($categoria['total_despesas'], 2, ',', '.') . " €</td>";
                             
                             echo "<td class='{$classe_delta}'>" . number_format($categoria['delta'], 2, ',', '.') . " €</td>";
@@ -552,78 +670,78 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             // Mostrar/ocultar a linha de subcategorias
             $('.subcategorias-' + categoriaId).toggleClass('oculto');
             
-            // Se estiver expandindo e o container estiver vazio, carregar via AJAX
-            if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
-                $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
-                
-                $.ajax({
-                    url: '../relatorios/obter_subcategorias.php',
-                    method: 'POST',
-                    data: { 
-                        categoria_id: categoriaId,
-                        mostrar_despesas: 0
-                    },
-                    success: function(response) {
-                        $('#subcategoria-container-' + categoriaId).html(response);
-                    },
-                    error: function() {
-                        $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
-                    }
-                });
-            }
-            
-            // Atualizar o estado na sessão
-            $.post('atualizar_estado_categoria.php', {
-                projeto_id: <?php echo $projeto_id; ?>,
-                categoria_id: categoriaId,
-                expandido: !isExpandido
-            });
-        });
-        
-        // Confirmação de exclusão
-        $(document).on('click', '.btn-acao.excluir', function(e) {
-            if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
-                e.preventDefault();
-            }
-        });
-        
-        // Adicionar tooltips nos valores de execução do orçamento
-        $('.resumo-valor').each(function() {
-            if ($(this).hasClass('positivo')) {
-                $(this).attr('title', 'Orçamento dentro do limite planejado');
-            } else if ($(this).hasClass('negativo')) {
-                $(this).attr('title', 'Orçamento excedido! Atenção necessária');
-            }
-        });
-        
-        // Adicionar tooltips nas barras de progresso
-        $('.progress-container').each(function() {
-            let percentagem = $(this).find('.progress-text').text();
-            let mensagem = '';
-            
-            if (percentagem.includes('100')) {
-                mensagem = 'Orçamento totalmente utilizado';
-            } else if (percentagem.includes('>100')) {
-                mensagem = 'Orçamento excedido!';
-            } else {
-                mensagem = 'Progresso da execução orçamentária';
-            }
-            
-            $(this).attr('title', mensagem);
-        });
-        
-        // Efeito de hover nas linhas de categoria
-        $('.categoria-row').hover(
-            function() {
-                $(this).css('background-color', '#f0f7ff');
-            },
-            function() {
-                $(this).css('background-color', '');
-            }
-        );
-    });
-    </script>
-    
-    <?php include '../includes/footer.php'; ?>
-</body>
-</html>
+// Se estiver expandindo e o container estiver vazio, carregar via AJAX
+               if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
+                   $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
+                   
+                   $.ajax({
+                       url: '../relatorios/obter_subcategorias.php',
+                       method: 'POST',
+                       data: { 
+                           categoria_id: categoriaId,
+                           mostrar_despesas: 0
+                       },
+                       success: function(response) {
+                           $('#subcategoria-container-' + categoriaId).html(response);
+                       },
+                       error: function() {
+                           $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
+                       }
+                   });
+               }
+               
+               // Atualizar o estado na sessão
+               $.post('atualizar_estado_categoria.php', {
+                   projeto_id: <?php echo $projeto_id; ?>,
+                   categoria_id: categoriaId,
+                   expandido: !isExpandido
+               });
+           });
+           
+           // Confirmação de exclusão
+           $(document).on('click', '.btn-acao.excluir', function(e) {
+               if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
+                   e.preventDefault();
+               }
+           });
+           
+           // Adicionar tooltips nos valores de execução do orçamento
+           $('.resumo-valor').each(function() {
+               if ($(this).hasClass('positivo')) {
+                   $(this).attr('title', 'Orçamento dentro do limite planejado');
+               } else if ($(this).hasClass('negativo')) {
+                   $(this).attr('title', 'Orçamento excedido! Atenção necessária');
+               }
+           });
+           
+           // Adicionar tooltips nas barras de progresso
+           $('.progress-container').each(function() {
+               let percentagem = $(this).find('.progress-text').text();
+               let mensagem = '';
+               
+               if (percentagem.includes('100')) {
+                   mensagem = 'Orçamento totalmente utilizado';
+               } else if (percentagem.includes('>100')) {
+                   mensagem = 'Orçamento excedido!';
+               } else {
+                   mensagem = 'Progresso da execução orçamentária';
+               }
+               
+               $(this).attr('title', mensagem);
+           });
+           
+           // Efeito de hover nas linhas de categoria
+           $('.categoria-row').hover(
+               function() {
+                   $(this).css('background-color', '#f0f7ff');
+               },
+               function() {
+                   $(this).css('background-color', '');
+               }
+           );
+       });
+       </script>
+       
+       <?php include '../includes/footer.php'; ?>
+   </body>
+   </html>

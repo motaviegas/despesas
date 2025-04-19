@@ -7,39 +7,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
     $categoria_id = intval($_POST['categoria_id']);
     $mostrar_despesas = isset($_POST['mostrar_despesas']) ? intval($_POST['mostrar_despesas']) : 0;
     
-    // Obter todas as subcategorias diretas (filhos)
-    $stmt = $pdo->prepare("
-        SELECT c.id, c.numero_conta, c.descricao, c.budget, c.nivel, c.categoria_pai_id,
-               COALESCE(SUM(d.valor), 0) as total_despesas,
-               (c.budget - COALESCE(SUM(d.valor), 0)) as delta
-        FROM categorias c
-        LEFT JOIN despesas d ON c.id = d.categoria_id
-        WHERE c.categoria_pai_id = :categoria_pai_id
-        GROUP BY c.id
-        ORDER BY c.numero_conta
-    ");
-    $stmt->bindParam(':categoria_pai_id', $categoria_id, PDO::PARAM_INT);
-    $stmt->execute();
-    $subcategorias_raw = $stmt->fetchAll();
-    
-    // Obter todas as categorias e despesas do projeto para calcular os totais corretos
+    // Obter o projeto_id da categoria para usar posteriormente
     $stmt = $pdo->prepare("SELECT projeto_id FROM categorias WHERE id = :id");
     $stmt->bindParam(':id', $categoria_id, PDO::PARAM_INT);
     $stmt->execute();
-    $projeto = $stmt->fetch();
-    $projeto_id = $projeto['projeto_id'];
+    $resultado = $stmt->fetch();
+    $projeto_id = $resultado['projeto_id'];
     
-    // Obter todas as categorias do projeto e calcular os totais
+    // Obter todas as categorias e despesas do projeto para calcular os totais corretos
     $categorias_despesas_raw = obterCategoriasDespesas($pdo, $projeto_id);
     $categorias_despesas = calcularTotaisCategoriasDespesas($categorias_despesas_raw);
     
-    // Filtrar apenas as subcategorias desta categoria
-    $subcategorias = [];
-    foreach ($subcategorias_raw as $sub) {
-        if (isset($categorias_despesas[$sub['id']])) {
-            $subcategorias[$sub['id']] = $categorias_despesas[$sub['id']];
-        }
-    }
+    // Obter todas as subcategorias diretas (filhos)
+    $subcategorias = array_filter($categorias_despesas, function($cat) use ($categoria_id) {
+        return isset($cat['categoria_pai_id']) && $cat['categoria_pai_id'] == $categoria_id;
+    });
     
     // Exibir subcategorias se existirem
     if (count($subcategorias) > 0) {
@@ -48,10 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
         $contador = 0; // Contador para alternância de cores
         foreach ($subcategorias as $subcategoria) {
             // Verificar se esta subcategoria tem filhos
-            $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM categorias WHERE categoria_pai_id = :categoria_pai_id");
-            $stmt->bindParam(':categoria_pai_id', $subcategoria['id'], PDO::PARAM_INT);
-            $stmt->execute();
-            $tem_filhos = $stmt->fetch()['total'] > 0;
+            $tem_filhos = false;
+            foreach ($categorias_despesas as $cat) {
+                if (isset($cat['categoria_pai_id']) && $cat['categoria_pai_id'] == $subcategoria['id']) {
+                    $tem_filhos = true;
+                    break;
+                }
+            }
             
             // Verificar se existem despesas nesta subcategoria
             $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM despesas WHERE categoria_id = :categoria_id");
@@ -65,21 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
                 
             // Determinar a cor baseada na percentagem
             if ($percentagem_execucao <= 50) {
-                $barra_classe = "verde";
-                $barra_largura = $percentagem_execucao * 2; // Dobro para ocupar metade quando chegar a 50%
+                $cor_percentagem = "verde";
             } elseif ($percentagem_execucao <= 75) {
-                $barra_classe = "amarelo";
-                $barra_largura = $percentagem_execucao;
+                $cor_percentagem = "amarelo";
             } elseif ($percentagem_execucao <= 95) {
-                $barra_classe = "laranja";
-                $barra_largura = $percentagem_execucao;
+                $cor_percentagem = "laranja";
             } else {
-                if ($percentagem_execucao > 100) {
-                    $barra_classe = "vermelho-intenso";
-                } else {
-                    $barra_classe = "vermelho";
-                }
-                $barra_largura = min($percentagem_execucao, 100); // Limitar a 100%
+                $cor_percentagem = $percentagem_execucao > 100 ? "vermelho-intenso" : "vermelho";
             }
             
             // Aplicar cores alternadas
@@ -110,11 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
             
             // Coluna de despesas com indicador visual
             echo '<td>';
-            if ($subcategoria['total_despesas'] > 0) {
-                echo '<div class="mini-progress-container" title="' . number_format($percentagem_execucao, 1) . '% executado">';
-                echo '<div class="mini-progress-bar ' . $barra_classe . '" style="width: ' . $barra_largura . '%;"></div>';
-                echo '</div>';
-            }
+            echo '<span class="categoria-indicador ' . $cor_percentagem . '" title="' . number_format($percentagem_execucao, 1) . '% executado"></span>';
             echo number_format($subcategoria['total_despesas'], 2, ',', '.') . ' €</td>';
             
             // Classe para o delta (positivo ou negativo)
@@ -238,5 +211,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
 
 .acoes-container {
     white-space: nowrap;
+}
+
+.categoria-indicador {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.categoria-indicador.verde { background-color: #28a745; }
+.categoria-indicador.amarelo { background-color: #ffc107; }
+.categoria-indicador.laranja { background-color: #fd7e14; }
+.categoria-indicador.vermelho { background-color: #dc3545; }
+.categoria-indicador.vermelho-intenso { 
+    background-color: #dc3545;
+    box-shadow: 0 0 5px #dc3545;
 }
 </style>

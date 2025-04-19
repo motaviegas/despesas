@@ -19,7 +19,7 @@ if (!$projeto) {
     exit;
 }
 
-// Obter estatísticas básicas
+// Obter estatísticas básicas - Melhorado para calcular o valor do orçamento individual corretamente
 $stmt = $pdo->prepare("
     SELECT 
         COUNT(DISTINCT c.id) as total_categorias,
