@@ -45,7 +45,7 @@ if (isset($_GET['toggle'])) {
     exit;
 }
 
-// Obter categorias e calcular totais - Corrigido para exibir valores corretos
+// Obter categorias e calcular totais - Usando a função corrigida
 $categorias = obterCategoriasDespesas($pdo, $projeto_id);
 $categorias_com_totais = calcularTotaisCategoriasDespesas($categorias);
 
@@ -79,7 +79,7 @@ if ($percentagem_execucao <= 50) {
 // Organizar categorias por pai para facilitar a renderização
 $categorias_por_pai = [];
 foreach ($categorias_com_totais as $categoria) {
-    if ($categoria['categoria_pai_id'] !== null) {
+    if (isset($categoria['categoria_pai_id']) && $categoria['categoria_pai_id'] !== null) {
         if (!isset($categorias_por_pai[$categoria['categoria_pai_id']])) {
             $categorias_por_pai[$categoria['categoria_pai_id']] = [];
         }
@@ -187,6 +187,15 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
         .resumo-valor {
             font-size: 24px;
             font-weight: bold;
+        }
+        
+        .positivo { color: #28a745; }
+        .negativo { color: #dc3545; }
+        .ultrapassado { 
+            color: #dc3545; 
+            font-weight: 900;
+            font-size: 32px;
+            text-shadow: 0px 0px 2px rgba(0,0,0,0.3);
         }
         
         .detalhes-categoria {
@@ -627,7 +636,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                     
                     // Obter categorias de nível 1
                     $categorias_nivel1 = array_filter($categorias_com_totais, function($cat) {
-                        return $cat['nivel'] == 1;
+                        return isset($cat['nivel']) && $cat['nivel'] == 1;
                     });
                     
                     // Renderizar categorias começando pelo nível 1
@@ -670,78 +679,78 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
             // Mostrar/ocultar a linha de subcategorias
             $('.subcategorias-' + categoriaId).toggleClass('oculto');
             
-// Se estiver expandindo e o container estiver vazio, carregar via AJAX
-               if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
-                   $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
-                   
-                   $.ajax({
-                       url: '../relatorios/obter_subcategorias.php',
-                       method: 'POST',
-                       data: { 
-                           categoria_id: categoriaId,
-                           mostrar_despesas: 0
-                       },
-                       success: function(response) {
-                           $('#subcategoria-container-' + categoriaId).html(response);
-                       },
-                       error: function() {
-                           $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
-                       }
-                   });
-               }
-               
-               // Atualizar o estado na sessão
-               $.post('atualizar_estado_categoria.php', {
-                   projeto_id: <?php echo $projeto_id; ?>,
-                   categoria_id: categoriaId,
-                   expandido: !isExpandido
-               });
-           });
-           
-           // Confirmação de exclusão
-           $(document).on('click', '.btn-acao.excluir', function(e) {
-               if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
-                   e.preventDefault();
-               }
-           });
-           
-           // Adicionar tooltips nos valores de execução do orçamento
-           $('.resumo-valor').each(function() {
-               if ($(this).hasClass('positivo')) {
-                   $(this).attr('title', 'Orçamento dentro do limite planejado');
-               } else if ($(this).hasClass('negativo')) {
-                   $(this).attr('title', 'Orçamento excedido! Atenção necessária');
-               }
-           });
-           
-           // Adicionar tooltips nas barras de progresso
-           $('.progress-container').each(function() {
-               let percentagem = $(this).find('.progress-text').text();
-               let mensagem = '';
-               
-               if (percentagem.includes('100')) {
-                   mensagem = 'Orçamento totalmente utilizado';
-               } else if (percentagem.includes('>100')) {
-                   mensagem = 'Orçamento excedido!';
-               } else {
-                   mensagem = 'Progresso da execução orçamentária';
-               }
-               
-               $(this).attr('title', mensagem);
-           });
-           
-           // Efeito de hover nas linhas de categoria
-           $('.categoria-row').hover(
-               function() {
-                   $(this).css('background-color', '#f0f7ff');
-               },
-               function() {
-                   $(this).css('background-color', '');
-               }
-           );
-       });
-       </script>
-       
-       <?php include '../includes/footer.php'; ?>
-   </body>
-   </html>
+            // Se estiver expandindo e o container estiver vazio, carregar via AJAX
+            if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
+                $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
+                
+                $.ajax({
+                    url: '../relatorios/obter_subcategorias.php',
+                    method: 'POST',
+                    data: { 
+                        categoria_id: categoriaId,
+                        mostrar_despesas: 0
+                    },
+                    success: function(response) {
+                        $('#subcategoria-container-' + categoriaId).html(response);
+                    },
+                    error: function() {
+                        $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
+                    }
+                });
+            }
+            
+            // Atualizar o estado na sessão
+            $.post('atualizar_estado_categoria.php', {
+                projeto_id: <?php echo $projeto_id; ?>,
+                categoria_id: categoriaId,
+                expandido: !isExpandido
+            });
+        });
+        
+        // Confirmação de exclusão
+        $(document).on('click', '.btn-acao.excluir', function(e) {
+            if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
+                e.preventDefault();
+            }
+        });
+        
+        // Adicionar tooltips nos valores de execução do orçamento
+        $('.resumo-valor').each(function() {
+            if ($(this).hasClass('positivo')) {
+                $(this).attr('title', 'Orçamento dentro do limite planejado');
+            } else if ($(this).hasClass('negativo')) {
+                $(this).attr('title', 'Orçamento excedido! Atenção necessária');
+            }
+        });
+        
+        // Adicionar tooltips nas barras de progresso
+        $('.progress-container').each(function() {
+            let percentagem = $(this).find('.progress-text').text();
+            let mensagem = '';
+            
+            if (percentagem.includes('100')) {
+                mensagem = 'Orçamento totalmente utilizado';
+            } else if (parseFloat(percentagem) > 100) {
+                mensagem = 'Orçamento excedido!';
+            } else {
+                mensagem = 'Progresso da execução orçamentária';
+            }
+            
+            $(this).attr('title', mensagem);
+        });
+        
+        // Efeito de hover nas linhas de categoria
+        $('.categoria-row').hover(
+            function() {
+                $(this).css('background-color', '#f0f7ff');
+            },
+            function() {
+                $(this).css('background-color', '');
+            }
+        );
+    });
+    </script>
+    
+    <?php include '../includes/footer.php'; ?>
+</body>
+</html>
