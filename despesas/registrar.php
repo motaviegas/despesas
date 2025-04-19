@@ -1,4 +1,9 @@
 <?php
+// Habilita exibição de erros
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require_once '../config/db.php';
 require_once '../includes/functions.php';
 verificarLogin();
@@ -19,71 +24,61 @@ if (!$projeto) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    try {
-        $categoria_id = intval($_POST['categoria_id']);
-        $fornecedor = trim($_POST['fornecedor']);
-        $tipo = $_POST['tipo'];
-        $valor = str_replace([',', '€'], ['.', ''], trim($_POST['valor']));
-        $descricao = trim($_POST['descricao']);
-        $data_despesa = $_POST['data_despesa'] ?: date('Y-m-d');
-        $usuario_id = $_SESSION['usuario_id'];
-        
-        // Validar dados
-        if (empty($categoria_id) || empty($fornecedor) || empty($valor)) {
-            $mensagem = "Por favor, preencha todos os campos obrigatórios.";
-            $tipo_mensagem = 'danger';
-        } elseif (!is_numeric($valor) || $valor <= 0) {
-            $mensagem = "Por favor, informe um valor válido para a despesa.";
-            $tipo_mensagem = 'danger';
-        } else {
-            // Processar anexo
-            $anexo_path = null;
-            if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] == 0) {
-                $upload_dir = '../assets/arquivos/';
-                
-                // Criar o diretório se não existir
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0755, true);
-                }
-                
-                $file_name = time() . '_' . basename($_FILES['anexo']['name']);
-                $target_file = $upload_dir . $file_name;
-                
-                $file_type = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-                $allowed_types = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'tiff', 'webp'];
-                
-                if (in_array($file_type, $allowed_types)) {
-                    if (move_uploaded_file($_FILES['anexo']['tmp_name'], $target_file)) {
-                        $anexo_path = $file_name;
-                    } else {
-                        $mensagem = "Erro ao fazer upload do anexo.";
-                        $tipo_mensagem = 'danger';
-                    }
-                } else {
-                    $mensagem = "Tipo de arquivo não permitido. Utilize PDF ou imagens.";
-                    $tipo_mensagem = 'danger';
-                }
+    $categoria_id = intval($_POST['categoria_id']);
+    $fornecedor = trim($_POST['fornecedor']);
+    $tipo = $_POST['tipo'];
+    $valor = str_replace([',', '€'], ['.', ''], trim($_POST['valor']));
+    $descricao = trim($_POST['descricao']);
+    $data_despesa = $_POST['data_despesa'] ?: date('Y-m-d');
+    $usuario_id = $_SESSION['usuario_id'];
+    
+    // Validar dados
+    if (empty($categoria_id) || empty($fornecedor) || empty($valor)) {
+        $mensagem = "Por favor, preencha todos os campos obrigatórios.";
+        $tipo_mensagem = 'danger';
+    } elseif (!is_numeric($valor) || $valor <= 0) {
+        $mensagem = "Por favor, informe um valor válido para a despesa.";
+        $tipo_mensagem = 'danger';
+    } else {
+        // Processar anexo
+        $anexo_path = null;
+        if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] == 0) {
+            $upload_dir = '../assets/arquivos/';
+            
+            // Criar o diretório se não existir
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
             }
             
-            if (empty($mensagem)) {
+            $file_name = time() . '_' . basename($_FILES['anexo']['name']);
+            $target_file = $upload_dir . $file_name;
+            
+            $file_type = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+            $allowed_types = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'tiff', 'webp'];
+            
+            if (in_array($file_type, $allowed_types)) {
+                if (move_uploaded_file($_FILES['anexo']['tmp_name'], $target_file)) {
+                    $anexo_path = $file_name;
+                } else {
+                    $mensagem = "Erro ao fazer upload do anexo.";
+                    $tipo_mensagem = 'danger';
+                }
+            } else {
+                $mensagem = "Tipo de arquivo não permitido. Utilize PDF ou imagens.";
+                $tipo_mensagem = 'danger';
+            }
+        }
+        
+        if (empty($mensagem)) {
+            try {
                 // Iniciar transação para garantir integridade
                 $pdo->beginTransaction();
                 
-                // Verificar se a função obterOuCriarFornecedor existe
-                if (!function_exists('obterOuCriarFornecedor')) {
-                    throw new Exception("Função obterOuCriarFornecedor não encontrada");
-                }
-                
-                // Obter ou criar fornecedor
-                $fornecedor_id = obterOuCriarFornecedor($pdo, $fornecedor);
-                
-                // Verificar se a função registrarDespesa existe
-                if (!function_exists('registrarDespesa')) {
-                    throw new Exception("Função registrarDespesa não encontrada");
-                }
-                
                 // Registrar a despesa
                 $despesa_id = registrarDespesa($pdo, $projeto_id, $categoria_id, $fornecedor, $tipo, $valor, $descricao, $data_despesa, $usuario_id, $anexo_path);
+                
+                // Atualizar as somas nas categorias pai
+                atualizarSomasDespesasCategoriasPai($pdo, $categoria_id, $valor, $usuario_id);
                 
                 // Confirmar a transação
                 $pdo->commit();
@@ -97,22 +92,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $valor = '';
                 $descricao = '';
                 $data_despesa = date('Y-m-d');
+                
+            } catch (PDOException $e) {
+                // Reverter em caso de erro
+                $pdo->rollBack();
+                $mensagem = "Erro ao registrar despesa: " . $e->getMessage();
+                $tipo_mensagem = 'danger';
             }
         }
-    } catch (Exception $e) {
-        // Reverter em caso de erro
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        $mensagem = "Erro ao registrar despesa: " . $e->getMessage();
-        $tipo_mensagem = 'danger';
-        
-        // Registrar erro em log
-        error_log("Erro em registrar.php: " . $e->getMessage());
     }
 }
 
-// Obter categorias para o dropdown - Ordenar por número de conta para facilitar a localização
+// Obter categorias para o dropdown - Ordenar por número de conta
 $stmt = $pdo->prepare("
     SELECT c.id, c.numero_conta, c.descricao, c.budget,
            COALESCE(SUM(d.valor), 0) as total_despesas
@@ -126,13 +117,15 @@ $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
 $stmt->execute();
 $categorias = $stmt->fetchAll();
 
-// Obter os fornecedores mais frequentes para sugestões iniciais
+// Obter os fornecedores mais frequentes - CORRIGIDO AQUI
 $stmt = $pdo->prepare("
     SELECT DISTINCT f.nome
     FROM fornecedores f
     JOIN despesas d ON f.id = d.fornecedor_id
-    JOIN projetos p ON d.projeto_id = p.id
-    WHERE p.criado_por = :usuario_id
+    WHERE d.projeto_id IN (
+        SELECT id FROM projetos WHERE criado_por = :usuario_id
+    )
+    GROUP BY f.nome
     ORDER BY COUNT(d.id) DESC
     LIMIT 10
 ");
@@ -518,11 +511,6 @@ if ($percentagem_execucao <= 50) {
                     success: function(response) {
                         $('#sugestoes_categoria').html(response);
                         $('#sugestoes_categoria').show();
-                    },
-                    error: function(xhr, status, error) {
-                        console.error("Erro AJAX:", error);
-                        $('#sugestoes_categoria').html('<div class="sem-resultados">Erro ao buscar categorias</div>');
-                        $('#sugestoes_categoria').show();
                     }
                 });
             } else {
@@ -566,9 +554,6 @@ if ($percentagem_execucao <= 50) {
                         $('#categoria_info').removeClass().addClass('categoria-info ' + classe);
                         $('#categoria_info').show();
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.error("Erro ao obter info categoria:", error);
                 }
             });
         });
@@ -593,11 +578,6 @@ if ($percentagem_execucao <= 50) {
                     data: { termo: termo },
                     success: function(response) {
                         $('#sugestoes_fornecedor').html(response);
-                        $('#sugestoes_fornecedor').show();
-                    },
-                    error: function(xhr, status, error) {
-                        console.error("Erro AJAX:", error);
-                        $('#sugestoes_fornecedor').html('<div class="sem-resultados">Erro ao buscar fornecedores</div>');
                         $('#sugestoes_fornecedor').show();
                     }
                 });
