@@ -1,3 +1,4 @@
+<?php
 // 1.1 Inclusão de arquivos necessários
 require_once '../config/db.php';
 require_once '../includes/functions.php';
@@ -10,7 +11,6 @@ if (!ehAdmin()) {
     header('Location: ../dashboard.php');
     exit;
 }
-
 
 // 2.1 Variável para mensagens de feedback
 $mensagem = '';
@@ -105,31 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 $stmt = $pdo->prepare("SELECT id, email, tipo_conta, data_criacao FROM usuarios ORDER BY data_criacao DESC");
 $stmt->execute();
 $usuarios = $stmt->fetchAll();
+?>
 
-<!-- 4.1 Cabeçalho e metadados -->
-<!DOCTYPE html>
-<html lang="pt">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciar Usuários - Gestão de Eventos</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <style>
-        /* 4.1.1 Estilos inline para formulários ocultos */
-        .admin { color: #0056b3; font-weight: bold; }
-        .normal { color: #6c757d; }
-        #adicionar-form, #redefinir-form {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background-color: #f9f9f9;
-        }
-    </style>
-</head>
-
-<!-- 4.1 Cabeçalho e metadados -->
 <!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -288,7 +265,7 @@ $usuarios = $stmt->fetchAll();
 	    });
 	</script>
 		
-		    <!-- 7.1 Inclusão do rodapé -->
-		    <?php include '../includes/footer.php'; ?>
-		</body>
-		</html>
+    <!-- 7.1 Inclusão do rodapé -->
+    <?php include '../includes/footer.php'; ?>
+</body>
+</html>
