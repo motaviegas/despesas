@@ -19,31 +19,37 @@ if (!$projeto) {
     exit;
 }
 
-// Obter estatísticas básicas - Melhorado para calcular o valor do orçamento individual corretamente
-$stmt = $pdo->prepare("
-    SELECT 
-        COUNT(DISTINCT c.id) as total_categorias,
-        COUNT(DISTINCT d.id) as total_despesas,
-        COALESCE(SUM(d.valor), 0) as soma_despesas,
-        (SELECT COALESCE(SUM(budget), 0) FROM categorias WHERE projeto_id = :projeto_id AND nivel = 1) as orcamento_total
-    FROM categorias c
-    LEFT JOIN despesas d ON c.id = d.categoria_id AND d.projeto_id = :projeto_id
-    WHERE c.projeto_id = :projeto_id2
-");
-$stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
-$stmt->bindParam(':projeto_id2', $projeto_id, PDO::PARAM_INT);
-$stmt->execute();
-$estatisticas = $stmt->fetch();
+// Obter estatísticas básicas - Melhorado para calcular o valor do orçamento corretamente
+// Usar a nova função calcularTotaisCategoriasDespesas
+$categorias = obterCategoriasDespesas($pdo, $projeto_id);
+$categorias_com_totais = calcularTotaisCategoriasDespesas($categorias);
+
+// Obter informações do total global (id 0)
+$total_global = isset($categorias_com_totais[0]) ? $categorias_com_totais[0] : [
+    'budget' => 0,
+    'total_despesas' => 0,
+    'delta' => 0
+];
+
+// Aplicar valores calculados corretamente
+$estatisticas = [
+    'total_categorias' => count($categorias),
+    'total_despesas' => count(array_filter($categorias_com_totais, function($cat) {
+        return isset($cat['total_despesas']) && $cat['total_despesas'] > 0;
+    })),
+    'soma_despesas' => $total_global['total_despesas'],
+    'orcamento_total' => $total_global['budget']
+];
 
 // Calcular orçamento remanescente e percentagem de execução
-$orcamento_remanescente = $estatisticas['orcamento_total'] - $estatisticas['soma_despesas'];
+$orcamento_remanescente = $total_global['delta'];
 $percentagem_execucao = ($estatisticas['orcamento_total'] > 0) ? 
     ($estatisticas['soma_despesas'] / $estatisticas['orcamento_total']) * 100 : 0;
 
 // Determinar a classe da barra de progresso com base na percentagem
 if ($percentagem_execucao <= 50) {
     $barra_classe = "verde";
-    $barra_largura = $percentagem_execucao * 2; // Dobro do valor para ocupar metade quando chegar a 50%
+    $barra_largura = $percentagem_execucao;
 } elseif ($percentagem_execucao <= 75) {
     $barra_classe = "amarelo";
     $barra_largura = $percentagem_execucao;
@@ -215,7 +221,7 @@ if ($percentagem_execucao <= 50) {
                     
                     <div class="card">
                         <div class="card-title">Orçamento Remanescente</div>
-                        <div class="card-value <?php echo $orcamento_remanescente >= 0 ? 'positivo' : 'negativo ' . $saldo_classe; ?>">
+                        <div class="card-value <?php echo $orcamento_remanescente >= 0 ? 'positivo' : 'negativo ' . ($saldo_classe ?? ''); ?>">
                             <?php echo number_format($orcamento_remanescente, 2, ',', '.'); ?> €
                         </div>
                         <div class="progress-container">

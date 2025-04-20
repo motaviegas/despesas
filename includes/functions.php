@@ -55,9 +55,6 @@ function atualizarBudgetCategoria($pdo, $categoria_id, $novo_valor, $usuario_id,
    $stmt->bindParam(':motivo', $motivo, PDO::PARAM_STR);
    $stmt->execute();
    
-   // Não vamos mais atualizar categorias pai automaticamente aqui
-   // A soma será calculada dinamicamente com a função calcularTotaisCategoriasDespesas
-   
    return true;
 }
 

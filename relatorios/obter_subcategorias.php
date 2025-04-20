@@ -229,4 +229,156 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['categoria_id'])) {
     background-color: #dc3545;
     box-shadow: 0 0 5px #dc3545;
 }
+
+/* Melhorias visuais para subcategorias */
+.subtabela {
+    margin-top: 5px;
+    margin-bottom: 5px;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.subtabela tr:hover {
+    background-color: #f0f7ff !important;
+}
+
+.despesas-tabela {
+    margin-top: 15px;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.despesas-container {
+    margin-top: 20px;
+    background-color: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.linha-clara {
+    background-color: #f8f9fa;
+}
+
+.linha-escura {
+    background-color: #ffffff;
+}
+
+.sem-despesas {
+    text-align: center;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    margin-top: 15px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Ajustes para os valores monetários */
+td:nth-child(3), td:nth-child(4), td:nth-child(5) {
+    text-align: right !important;
+    font-family: 'Consolas', monospace;
+    font-weight: 500;
+}
+
+/* Estilos para o indicador de carregamento */
+/* Estilos para o indicador de carregamento */
+.loading-spinner {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+}
+
+.loading-spinner::after {
+    content: "";
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    margin-left: 10px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Melhorias de acessibilidade */
+.btn-acao:focus {
+    outline: 2px solid #2062b7;
+    outline-offset: 2px;
+}
+
+.toggle-icon:focus {
+    outline: 2px solid #2062b7;
+    outline-offset: 2px;
+}
+
+/* Tooltips aprimorados */
+[title] {
+    position: relative;
+    cursor: help;
+}
+
+[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 10;
+    pointer-events: none;
+    margin-bottom: 5px;
+}
+
+/* Animações de transição para melhor UX */
+.categoria-row td,
+.despesa-item td {
+    transition: background-color 0.2s;
+}
+
+/* Melhorias para dispositivos móveis */
+@media (max-width: 768px) {
+    .subtabela td:nth-child(4),
+    .subtabela th:nth-child(4),
+    .despesas-tabela td:nth-child(4),
+    .despesas-tabela th:nth-child(4) {
+        display: none;
+    }
+    
+    td, th {
+        padding: 8px 6px;
+        font-size: 14px;
+    }
+    
+    .ver-despesas {
+        display: block;
+        margin-top: 5px;
+        margin-left: 0;
+    }
+    
+    .toggle-icon {
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        font-size: 12px;
+    }
+}
 </style>

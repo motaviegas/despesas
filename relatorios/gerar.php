@@ -58,7 +58,7 @@ $percentagem_execucao = ($orcamento_global > 0) ?
 // Determinar a classe da barra de progresso com base na percentagem
 if ($percentagem_execucao <= 50) {
     $barra_classe = "verde";
-    $barra_largura = $percentagem_execucao * 2; // Dobro do valor para ocupar metade quando chegar a 50%
+    $barra_largura = $percentagem_execucao; // Simplifiquei para usar o valor direto
 } elseif ($percentagem_execucao <= 75) {
     $barra_classe = "amarelo";
     $barra_largura = $percentagem_execucao;
@@ -112,7 +112,7 @@ if ($ver_despesas_id > 0) {
     // Determinar a classe da barra de progresso para esta categoria
     if ($percentagem_categoria <= 50) {
         $barra_cat_classe = "verde";
-        $barra_cat_largura = $percentagem_categoria * 2;
+        $barra_cat_largura = $percentagem_categoria;
     } elseif ($percentagem_categoria <= 75) {
         $barra_cat_classe = "amarelo";
         $barra_cat_largura = $percentagem_categoria;
@@ -140,8 +140,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'csv') {
 
 // Exportar para Excel se solicitado
 if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
-    // Implementar exportação para Excel aqui
-    header('Location: gerar.php?projeto_id=' . $projeto_id . '&mensagem=Exportação para Excel será implementada em breve.');
+    header('Location: exportar.php?projeto_id=' . $projeto_id . '&formato=excel');
     exit;
 }
 ?>
@@ -668,6 +667,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
     
     <script>
     $(document).ready(function() {
+
         // Manipular clique nos ícones de expansão
         $(document).on('click', '.toggle-icon.expandir', function() {
             var categoriaId = $(this).data('id');
@@ -748,6 +748,24 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
                 $(this).css('background-color', '');
             }
         );
+        
+        // Adicionar animação suave quando expandir/colapsar categorias
+        $('.subcategorias-row').on('transitionend', function() {
+            if (!$(this).hasClass('oculto')) {
+                $('html, body').animate({
+                    scrollTop: $(this).offset().top - 100
+                }, 300);
+            }
+        });
+        
+        // Destacar visualmente as categorias com orçamento crítico
+        $('.categoria-row').each(function() {
+            const tdDelta = $(this).find('td:nth-child(4)');
+            if (tdDelta.hasClass('negativo')) {
+                $(this).find('td').css('font-weight', 'bold');
+                $(this).find('.ver-despesas').css('color', '#dc3545');
+            }
+        });
     });
     </script>
     
