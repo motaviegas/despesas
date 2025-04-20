@@ -110,7 +110,11 @@ if ($ver_despesas_id > 0) {
         ($total_despesas_categoria / $categoria_despesas['budget']) * 100 : 0;
         
     // Determinar a classe da barra de progresso para esta categoria
-    if ($percentagem_categoria <= 50) {
+    if ($total_despesas_categoria > $categoria_despesas['budget']) {
+        // Se despesas > orçamento, sempre vermelho intenso
+        $barra_cat_classe = "vermelho-intenso";
+        $barra_cat_largura = 100;
+    } elseif ($percentagem_categoria <= 50) {
         $barra_cat_classe = "verde";
         $barra_cat_largura = $percentagem_categoria;
     } elseif ($percentagem_categoria <= 75) {
@@ -120,12 +124,8 @@ if ($ver_despesas_id > 0) {
         $barra_cat_classe = "laranja";
         $barra_cat_largura = $percentagem_categoria;
     } else {
-        if ($percentagem_categoria > 100) {
-            $barra_cat_classe = "vermelho-intenso";
-        } else {
-            $barra_cat_classe = "vermelho";
-        }
-        $barra_cat_largura = min($percentagem_categoria, 100);
+        $barra_cat_classe = "vermelho";
+        $barra_cat_largura = $percentagem_categoria;
     }
 }
 
@@ -386,389 +386,392 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
         .ver-despesas:hover {
             text-decoration: underline;
         }
-        
-        /* Indicadores para as categorias */
-        .categoria-indicador {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 6px;
-        }
-        
-        .categoria-indicador.verde { background-color: #28a745; }
-        .categoria-indicador.amarelo { background-color: #ffc107; }
-        .categoria-indicador.laranja { background-color: #fd7e14; }
-        .categoria-indicador.vermelho { background-color: #dc3545; }
-        .categoria-indicador.vermelho-intenso { 
-            background-color: #dc3545;
-            box-shadow: 0 0 5px #dc3545;
-        }
-    </style>
-</head>
-<body>
-    <?php include '../includes/header.php'; ?>
-    
-    <div class="container">
-        <div class="relatorio-header">
-            <h1>Relatório de Orçamento</h1>
-            <h2><?php echo htmlspecialchars($projeto['nome']); ?></h2>
-            
-            <?php if (!empty($mensagem)): ?>
-                <div class="alert alert-info"><?php echo $mensagem; ?></div>
-            <?php endif; ?>
-            
-            <?php if (isset($categorias_com_totais[0])): // Se temos o total global ?>
-                <div class="resumo-orcamento">
-                    <div class="resumo-card">
-                        <div class="resumo-titulo">Total de Despesas</div>
-                        <div class="resumo-valor"><?php echo number_format($categorias_com_totais[0]['total_despesas'], 2, ',', '.'); ?> €</div>
-                    </div>
-                    
-                    <div class="resumo-card">
-                        <div class="resumo-titulo">Orçamento Remanescente</div>
-                        <div class="resumo-valor <?php echo $categorias_com_totais[0]['delta'] >= 0 ? 'positivo' : 'negativo ' . $saldo_classe; ?>">
-                            <?php echo number_format($categorias_com_totais[0]['delta'], 2, ',', '.'); ?> €
-                        </div>
-                        <div class="progress-container">
-                            <div class="progress-bar <?php echo $barra_classe; ?>" style="width: <?php echo $barra_largura; ?>%"></div>
-                            <span class="progress-text"><?php echo number_format($percentagem_execucao, 1, ',', '.'); ?>% Executado</span>
-                        </div>
-                    </div>
-                    
-                    <div class="resumo-card">
-                        <div class="resumo-titulo">Orçamento Total</div>
-                        <div class="resumo-valor"><?php echo number_format($categorias_com_totais[0]['budget'], 2, ',', '.'); ?> €</div>
-                    </div>
-                </div>
-            <?php endif; ?>
-            
-            <div class="relatorio-acoes">
-                <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=csv" class="btn">
-                    <i class="fa fa-file-text-o"></i> Exportar CSV
-                </a>
-                <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=excel" class="btn">
-                    <i class="fa fa-file-excel-o"></i> Exportar Excel
-                </a>
-                <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
-                    <i class="fa fa-pencil"></i> Editar Orçamento
-                </a>
-                <a href="../despesas/listar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
-                    <i class="fa fa-list"></i> Listar Despesas
-                </a>
-            </div>
-        </div>
-        
-        <?php if ($ver_despesas_id > 0 && isset($categoria_despesas)): ?>
-            <div class="detalhes-categoria">
-                <div class="subtitulo-secao">
-                    <h3>Despesas: <?php echo htmlspecialchars($categoria_despesas['numero_conta'] . ' - ' . $categoria_despesas['descricao']); ?></h3>
-                    <a href="?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
-                        <i class="fa fa-arrow-left"></i> Voltar ao Relatório
-                    </a>
-                </div>
-                
-                <div class="resumo-orcamento">
-                    <div class="resumo-card">
-                        <div class="resumo-titulo">Total Despesas</div>
-                        <div class="resumo-valor"><?php echo number_format($total_despesas_categoria, 2, ',', '.'); ?> €</div>
-                    </div>
-                    
-                    <div class="resumo-card">
-                        <div class="resumo-titulo">Orçamento da Categoria</div>
-                        <div class="resumo-valor"><?php echo number_format($categoria_despesas['budget'], 2, ',', '.'); ?> €</div>
-                    </div>
-                    
-                    <div class="resumo-card">
-                        <div class="resumo-titulo">Execução do Orçamento</div>
-                        <div class="progress-container">
-                            <div class="progress-bar <?php echo $barra_cat_classe; ?>" style="width: <?php echo $barra_cat_largura; ?>%"></div>
-                            <span class="progress-text"><?php echo number_format($percentagem_categoria, 1, ',', '.'); ?>%</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <?php if (count($despesas_categoria) > 0): ?>
-                    <table class="despesas-tabela">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Tipo</th>
-                                <th>Fornecedor</th>
-                                <th>Descrição</th>
-                                <th>Valor</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($despesas_categoria as $index => $despesa): 
-                                $classe = $index % 2 == 0 ? 'even-row' : 'odd-row';
-                            ?>
-                            <tr class="despesa-item <?php echo $classe; ?>">
-                                <td><?php echo date('d/m/Y', strtotime($despesa['data_despesa'])); ?></td>
-                                <td><?php echo ucfirst($despesa['tipo']); ?></td>
-                                <td><?php echo htmlspecialchars($despesa['fornecedor']); ?></td>
-                                <td><?php echo htmlspecialchars($despesa['descricao']); ?></td>
-                                <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
-                                <td>
-                                    <?php if (!empty($despesa['anexo_path'])): ?>
-                                        <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank" class="anexo-link" title="Ver fatura">
-                                            <i class="fa fa-file-pdf-o"></i> Fatura
-                                        </a>
-                                    <?php else: ?>
-                                        <span class="no-anexo">-</span>
-                                    <?php endif; ?>
-                                    
-                                    <a href="../despesas/editar.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao editar" title="Editar despesa">
-                                        <i class="fa fa-pencil"></i>
-                                    </a>
-                                    <a href="../despesas/excluir.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao excluir" title="Excluir despesa">
-                                        <i class="fa fa-trash"></i>
-                                    </a>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php else: ?>
-                    <div class="sem-despesas">Não há despesas registradas para esta categoria.</div>
-                <?php endif; ?>
-            </div>
-        <?php else: ?>
-            <table class="relatorio">
-                <thead>
-                    <tr>
-                        <th>Nr de conta</th>
-                        <th>DESCRIÇÃO DA RUBRICA</th>
-                        <th>Tot Despesa</th>
-                        <th>Delta Budget</th>
-                        <th>Budget</th>
-                    </tr>
-                </thead>
-                <tbody id="categorias-container">
-                    <?php if (isset($categorias_com_totais[0])): // Total Global ?>
-                        <tr class="categoria-0">
-                            <td>TOTAL</td>
-                            <td>TOTAL GLOBAL</td>
-                            <td><?php echo number_format($categorias_com_totais[0]['total_despesas'], 2, ',', '.'); ?> €</td>
-                            <td class="<?php echo $categorias_com_totais[0]['delta'] >= 0 ? 'positivo' : 'negativo'; ?>">
-                                <?php echo number_format($categorias_com_totais[0]['delta'], 2, ',', '.'); ?> €
-                            </td>
-                            <td><?php echo number_format($categorias_com_totais[0]['budget'], 2, ',', '.'); ?> €</td>
-                        </tr>
-                    <?php endif; ?>
-                    
-                    <?php 
-                    // Função para renderizar categorias de forma recursiva
-                    function renderizarCategorias($categorias, $categorias_por_pai, $nivel, $categorias_expandidas, $projeto_id) {
-                        foreach ($categorias as $categoria) {
-                            if ($categoria['nivel'] != $nivel) continue;
-                            if ($categoria['id'] == 0) continue; // Pular o total global
-                            
-                            $expandida = in_array($categoria['id'], $categorias_expandidas);
-                            $tem_filhos = isset($categorias_por_pai[$categoria['id']]);
-                            $classe_delta = $categoria['delta'] >= 0 ? 'positivo' : 'negativo';
-                            $classe_nivel = "nivel-{$nivel}";
-                            
-                            // Calcular percentagem de execução para esta categoria
-                            $percentagem_cat = ($categoria['budget'] > 0) ? 
-                                ($categoria['total_despesas'] / $categoria['budget']) * 100 : 0;
-                                
-                            // Determinar a cor baseada na percentagem
-                            if ($percentagem_cat <= 50) {
-                                $cor_percentagem = "verde";
-                            } elseif ($percentagem_cat <= 75) {
-                                $cor_percentagem = "amarelo";
-                            } elseif ($percentagem_cat <= 95) {
-                                $cor_percentagem = "laranja";
-                            } else {
-                                $cor_percentagem = $percentagem_cat > 100 ? "vermelho-intenso" : "vermelho";
-                            }
-                            
-                            echo "<tr class='categoria-row' id='categoria-{$categoria['id']}'>";
-                            echo "<td>{$categoria['numero_conta']}</td>";
-                            echo "<td class='{$classe_nivel}'>";
-                            
-                            if ($tem_filhos) {
-                                $simbolo = $expandida ? '−' : '+';
-                                echo "<span class='toggle-icon expandir' data-id='{$categoria['id']}'>{$simbolo}</span> ";
-                            } else {
-                                echo "<span class='toggle-icon'></span>";
-                            }
-                            
-                            echo htmlspecialchars($categoria['descricao']);
-                            
-                            // Adicionar link "Ver despesas" para categorias de nível 3 ou superior ou categorias sem filhos
-                            if ($nivel >= 3 || !$tem_filhos) {
-                                echo " <a href='?projeto_id={$projeto_id}&ver_despesas={$categoria['id']}' class='ver-despesas'>
-                                    <i class='fa fa-eye'></i> Ver despesas
-                                </a>";
-                            }
-                            
-                            echo "</td>";
-                            
-                            // Coluna Total Despesas com percentagem em tooltip e indicador visual
-                            echo "<td title='{$percentagem_cat}% do orçamento'>";
-                            echo "<span class='categoria-indicador {$cor_percentagem}'></span>";
-                            echo number_format($categoria['total_despesas'], 2, ',', '.') . " €</td>";
-                            
-                            echo "<td class='{$classe_delta}'>" . number_format($categoria['delta'], 2, ',', '.') . " €</td>";
-                            echo "<td>" . number_format($categoria['budget'], 2, ',', '.') . " €</td>";
-                            echo "</tr>";
-                            
-                            // Criar linha para subcategorias (inicialmente oculta)
-                            echo "<tr class='subcategorias-row subcategorias-{$categoria['id']} " . ($expandida ? '' : 'oculto') . "'>";
-                            echo "<td colspan='5'><div class='subcategoria-container' id='subcategoria-container-{$categoria['id']}'>";
-                            
-                            // Se a categoria estiver expandida, renderizar seus filhos
-                            if ($tem_filhos && $expandida) {
-                                $filhos = array_filter($categorias, function($cat) use ($categoria) {
-                                    return $cat['categoria_pai_id'] == $categoria['id'];
-                                });
-                                
-                                renderizarCategorias($filhos, $categorias_por_pai, $nivel + 1, $categorias_expandidas, $projeto_id);
-                            }
-                            
-                            echo "</div></td></tr>";
-                        }
-                    }
-                    
-                    // Obter categorias de nível 1
-                    $categorias_nivel1 = array_filter($categorias_com_totais, function($cat) {
-                        return isset($cat['nivel']) && $cat['nivel'] == 1;
-                    });
-                    
-                    // Renderizar categorias começando pelo nível 1
-                    renderizarCategorias(
-                        $categorias_nivel1, 
-                        $categorias_por_pai, 
-                        1, 
-                        $_SESSION['categorias_expandidas'][$projeto_id] ?? [], 
-                        $projeto_id
-                    );
-                    ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
-        
-        <!-- Botões flutuantes fixos no canto inferior direito -->
-        <div class="botoes-fixos">
-            <a href="../despesas/registrar.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante" title="Nova Despesa">
-                <i class="fa fa-plus"></i>
-            </a>
-            <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante secundario" title="Editar Orçamento">
-                <i class="fa fa-pencil"></i>
-            </a>
-            <a href="../projetos/ver.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante secundario" title="Detalhes do Projeto">
-                <i class="fa fa-info"></i>
-            </a>
-        </div>
-    </div>
-    
-    <script>
-    $(document).ready(function() {
+		
+		/* Indicadores para as categorias */
+		       .categoria-indicador {
+		           display: inline-block;
+		           width: 12px;
+		           height: 12px;
+		           border-radius: 50%;
+		           margin-right: 6px;
+		       }
+       
+		       .categoria-indicador.verde { background-color: #28a745; }
+		       .categoria-indicador.amarelo { background-color: #ffc107; }
+		       .categoria-indicador.laranja { background-color: #fd7e14; }
+		       .categoria-indicador.vermelho { background-color: #dc3545; }
+		       .categoria-indicador.vermelho-intenso { 
+		           background-color: #dc3545;
+		           box-shadow: 0 0 5px #dc3545;
+		       }
+		   </style>
+		</head>
+		<body>
+		   <?php include '../includes/header.php'; ?>
+   
+		   <div class="container">
+		       <div class="relatorio-header">
+		           <h1>Relatório de Orçamento</h1>
+		           <h2><?php echo htmlspecialchars($projeto['nome']); ?></h2>
+           
+		           <?php if (!empty($mensagem)): ?>
+		               <div class="alert alert-info"><?php echo $mensagem; ?></div>
+		           <?php endif; ?>
+           
+		           <?php if (isset($categorias_com_totais[0])): // Se temos o total global ?>
+		               <div class="resumo-orcamento">
+		                   <div class="resumo-card">
+		                       <div class="resumo-titulo">Total de Despesas</div>
+		                       <div class="resumo-valor"><?php echo number_format($categorias_com_totais[0]['total_despesas'], 2, ',', '.'); ?> €</div>
+		                   </div>
+                   
+		                   <div class="resumo-card">
+		                       <div class="resumo-titulo">Orçamento Remanescente</div>
+		                       <div class="resumo-valor <?php echo $categorias_com_totais[0]['delta'] >= 0 ? 'positivo' : 'negativo ' . $saldo_classe; ?>">
+		                           <?php echo number_format($categorias_com_totais[0]['delta'], 2, ',', '.'); ?> €
+		                       </div>
+		                       <div class="progress-container">
+		                           <div class="progress-bar <?php echo $barra_classe; ?>" style="width: <?php echo $barra_largura; ?>%"></div>
+		                           <span class="progress-text"><?php echo number_format($percentagem_execucao, 1, ',', '.'); ?>% Executado</span>
+		                       </div>
+		                   </div>
+                   
+		                   <div class="resumo-card">
+		                       <div class="resumo-titulo">Orçamento Total</div>
+		                       <div class="resumo-valor"><?php echo number_format($categorias_com_totais[0]['budget'], 2, ',', '.'); ?> €</div>
+		                   </div>
+		               </div>
+		           <?php endif; ?>
+           
+		           <div class="relatorio-acoes">
+		               <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=csv" class="btn">
+		                   <i class="fa fa-file-text-o"></i> Exportar CSV
+		               </a>
+		               <a href="?projeto_id=<?php echo $projeto_id; ?>&exportar=excel" class="btn">
+		                   <i class="fa fa-file-excel-o"></i> Exportar Excel
+		               </a>
+		               <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
+		                   <i class="fa fa-pencil"></i> Editar Orçamento
+		               </a>
+		               <a href="../despesas/listar.php?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
+		                   <i class="fa fa-list"></i> Listar Despesas
+		               </a>
+		           </div>
+		       </div>
+       
+		       <?php if ($ver_despesas_id > 0 && isset($categoria_despesas)): ?>
+		           <div class="detalhes-categoria">
+		               <div class="subtitulo-secao">
+		                   <h3>Despesas: <?php echo htmlspecialchars($categoria_despesas['numero_conta'] . ' - ' . $categoria_despesas['descricao']); ?></h3>
+		                   <a href="?projeto_id=<?php echo $projeto_id; ?>" class="btn btn-sm">
+		                       <i class="fa fa-arrow-left"></i> Voltar ao Relatório
+		                   </a>
+		               </div>
+               
+		               <div class="resumo-orcamento">
+		                   <div class="resumo-card">
+		                       <div class="resumo-titulo">Total Despesas</div>
+		                       <div class="resumo-valor"><?php echo number_format($total_despesas_categoria, 2, ',', '.'); ?> €</div>
+		                   </div>
+                   
+		                   <div class="resumo-card">
+		                       <div class="resumo-titulo">Orçamento da Categoria</div>
+		                       <div class="resumo-valor"><?php echo number_format($categoria_despesas['budget'], 2, ',', '.'); ?> €</div>
+		                   </div>
+                   
+		                   <div class="resumo-card">
+		                       <div class="resumo-titulo">Execução do Orçamento</div>
+		                       <div class="progress-container">
+		                           <div class="progress-bar <?php echo $barra_cat_classe; ?>" style="width: <?php echo $barra_cat_largura; ?>%"></div>
+		                           <span class="progress-text"><?php echo number_format($percentagem_categoria, 1, ',', '.'); ?>%</span>
+		                       </div>
+		                   </div>
+		               </div>
+               
+		               <?php if (count($despesas_categoria) > 0): ?>
+		                   <table class="despesas-tabela">
+		                       <thead>
+		                           <tr>
+		                               <th>Data</th>
+		                               <th>Tipo</th>
+		                               <th>Fornecedor</th>
+		                               <th>Descrição</th>
+		                               <th>Valor</th>
+		                               <th>Ações</th>
+		                           </tr>
+		                       </thead>
+		                       <tbody>
+		                           <?php foreach ($despesas_categoria as $index => $despesa): 
+		                               $classe = $index % 2 == 0 ? 'even-row' : 'odd-row';
+		                           ?>
+		                           <tr class="despesa-item <?php echo $classe; ?>">
+		                               <td><?php echo date('d/m/Y', strtotime($despesa['data_despesa'])); ?></td>
+		                               <td><?php echo ucfirst($despesa['tipo']); ?></td>
+		                               <td><?php echo htmlspecialchars($despesa['fornecedor']); ?></td>
+		                               <td><?php echo htmlspecialchars($despesa['descricao']); ?></td>
+		                               <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
+		                               <td>
+		                                   <?php if (!empty($despesa['anexo_path'])): ?>
+		                                       <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank" class="anexo-link" title="Ver fatura">
+		                                           <i class="fa fa-file-pdf-o"></i> Fatura
+		                                       </a>
+		                                   <?php else: ?>
+		                                       <span class="no-anexo">-</span>
+		                                   <?php endif; ?>
+                                   
+		                                   <a href="../despesas/editar.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao editar" title="Editar despesa">
+		                                       <i class="fa fa-pencil"></i>
+		                                   </a>
+		                                   <a href="../despesas/excluir.php?projeto_id=<?php echo $projeto_id; ?>&despesa_id=<?php echo $despesa['id']; ?>" class="btn-acao excluir" title="Excluir despesa">
+		                                       <i class="fa fa-trash"></i>
+		                                   </a>
+		                               </td>
+		                           </tr>
+		                           <?php endforeach; ?>
+		                       </tbody>
+		                   </table>
+		               <?php else: ?>
+		                   <div class="sem-despesas">Não há despesas registradas para esta categoria.</div>
+		               <?php endif; ?>
+		           </div>
+		       <?php else: ?>
+		           <table class="relatorio">
+		               <thead>
+		                   <tr>
+		                       <th>Nr de conta</th>
+		                       <th>DESCRIÇÃO DA RUBRICA</th>
+		                       <th>Tot Despesa</th>
+		                       <th>Delta Budget</th>
+		                       <th>Budget</th>
+		                   </tr>
+		               </thead>
+		               <tbody id="categorias-container">
+		                   <?php if (isset($categorias_com_totais[0])): // Total Global ?>
+		                       <tr class="categoria-0">
+		                           <td>TOTAL</td>
+		                           <td>TOTAL GLOBAL</td>
+		                           <td><?php echo number_format($categorias_com_totais[0]['total_despesas'], 2, ',', '.'); ?> €</td>
+		                           <td class="<?php echo $categorias_com_totais[0]['delta'] >= 0 ? 'positivo' : 'negativo'; ?>">
+		                               <?php echo number_format($categorias_com_totais[0]['delta'], 2, ',', '.'); ?> €
+		                           </td>
+		                           <td><?php echo number_format($categorias_com_totais[0]['budget'], 2, ',', '.'); ?> €</td>
+		                       </tr>
+		                   <?php endif; ?>
+                   
+		                   <?php 
+		                   // Função para renderizar categorias de forma recursiva
+		                   function renderizarCategorias($categorias, $categorias_por_pai, $nivel, $categorias_expandidas, $projeto_id) {
+		                       foreach ($categorias as $categoria) {
+		                           if ($categoria['nivel'] != $nivel) continue;
+		                           if ($categoria['id'] == 0) continue; // Pular o total global
+                           
+		                           $expandida = in_array($categoria['id'], $categorias_expandidas);
+		                           $tem_filhos = isset($categorias_por_pai[$categoria['id']]);
+		                           $classe_delta = $categoria['delta'] >= 0 ? 'positivo' : 'negativo';
+		                           $classe_nivel = "nivel-{$nivel}";
+                           
+		                           // Calcular percentagem de execução para esta categoria
+		                           $percentagem_cat = ($categoria['budget'] > 0) ? 
+		                               ($categoria['total_despesas'] / $categoria['budget']) * 100 : 0;
+                               
+		                           // Determinar a cor baseada na percentagem e na relação entre despesas e orçamento
+		                           if ($categoria['total_despesas'] > $categoria['budget']) {
+		                               // Se despesas > orçamento, sempre vermelho
+		                               $cor_percentagem = "vermelho-intenso";
+		                           } elseif ($percentagem_cat <= 50) {
+		                               $cor_percentagem = "verde";
+		                           } elseif ($percentagem_cat <= 75) {
+		                               $cor_percentagem = "amarelo";
+		                           } elseif ($percentagem_cat <= 95) {
+		                               $cor_percentagem = "laranja";
+		                           } else {
+		                               $cor_percentagem = "vermelho";
+		                           }
+                           
+		                           echo "<tr class='categoria-row' id='categoria-{$categoria['id']}'>";
+		                           echo "<td>{$categoria['numero_conta']}</td>";
+		                           echo "<td class='{$classe_nivel}'>";
+                           
+		                           if ($tem_filhos) {
+		                               $simbolo = $expandida ? '−' : '+';
+		                               echo "<span class='toggle-icon expandir' data-id='{$categoria['id']}'>{$simbolo}</span> ";
+		                           } else {
+		                               echo "<span class='toggle-icon'></span>";
+		                           }
+                           
+		                           echo htmlspecialchars($categoria['descricao']);
+                           
+		                           // Adicionar link "Ver despesas" para categorias de nível 3 ou superior ou categorias sem filhos
+		                           if ($nivel >= 3 || !$tem_filhos) {
+		                               echo " <a href='?projeto_id={$projeto_id}&ver_despesas={$categoria['id']}' class='ver-despesas'>
+		                                   <i class='fa fa-eye'></i> Ver despesas
+		                               </a>";
+		                           }
+                           
+		                           echo "</td>";
+                           
+		                           // Coluna Total Despesas com percentagem em tooltip e indicador visual
+		                           echo "<td title='{$percentagem_cat}% do orçamento'>";
+		                           echo "<span class='categoria-indicador {$cor_percentagem}'></span>";
+		                           echo number_format($categoria['total_despesas'], 2, ',', '.') . " €</td>";
+                           
+		                           echo "<td class='{$classe_delta}'>" . number_format($categoria['delta'], 2, ',', '.') . " €</td>";
+		                           echo "<td>" . number_format($categoria['budget'], 2, ',', '.') . " €</td>";
+		                           echo "</tr>";
+                           
+		                           // Criar linha para subcategorias (inicialmente oculta)
+		                           echo "<tr class='subcategorias-row subcategorias-{$categoria['id']} " . ($expandida ? '' : 'oculto') . "'>";
+		                           echo "<td colspan='5'><div class='subcategoria-container' id='subcategoria-container-{$categoria['id']}'>";
+                           
+		                           // Se a categoria estiver expandida, renderizar seus filhos
+		                           if ($tem_filhos && $expandida) {
+		                               $filhos = array_filter($categorias, function($cat) use ($categoria) {
+		                                   return $cat['categoria_pai_id'] == $categoria['id'];
+		                               });
+                               
+		                               renderizarCategorias($filhos, $categorias_por_pai, $nivel + 1, $categorias_expandidas, $projeto_id);
+		                           }
+                           
+		                           echo "</div></td></tr>";
+		                       }
+		                   }
+                   
+		                   // Obter categorias de nível 1
+		                   $categorias_nivel1 = array_filter($categorias_com_totais, function($cat) {
+		                       return isset($cat['nivel']) && $cat['nivel'] == 1;
+		                   });
+                   
+		                   // Renderizar categorias começando pelo nível 1
+		                   renderizarCategorias(
+		                       $categorias_nivel1, 
+		                       $categorias_por_pai, 
+		                       1, 
+		                       $_SESSION['categorias_expandidas'][$projeto_id] ?? [], 
+		                       $projeto_id
+		                   );
+		                   ?>
+		               </tbody>
+		           </table>
+		       <?php endif; ?>
+       
+		       <!-- Botões flutuantes fixos no canto inferior direito -->
+		       <div class="botoes-fixos">
+		           <a href="../despesas/registrar.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante" title="Nova Despesa">
+		               <i class="fa fa-plus"></i>
+		           </a>
+		           <a href="../orcamento/editar.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante secundario" title="Editar Orçamento">
+		               <i class="fa fa-pencil"></i>
+		           </a>
+		           <a href="../projetos/ver.php?projeto_id=<?php echo $projeto_id; ?>" class="botao-flutuante secundario" title="Detalhes do Projeto">
+		               <i class="fa fa-info"></i>
+		           </a>
+		       </div>
+		   </div>
+   
+		   <script>
+		   $(document).ready(function() {
 
-        // Manipular clique nos ícones de expansão
-        $(document).on('click', '.toggle-icon.expandir', function() {
-            var categoriaId = $(this).data('id');
-            var isExpandido = $(this).text() === '−';
-            
-            // Alternar o símbolo
-            $(this).text(isExpandido ? '+' : '−');
-            
-            // Mostrar/ocultar a linha de subcategorias
-            $('.subcategorias-' + categoriaId).toggleClass('oculto');
-            
-            // Se estiver expandindo e o container estiver vazio, carregar via AJAX
-            if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
-                $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
-                
-                $.ajax({
-                    url: '../relatorios/obter_subcategorias.php',
-                    method: 'POST',
-                    data: { 
-                        categoria_id: categoriaId,
-                        mostrar_despesas: 0
-                    },
-                    success: function(response) {
-                        $('#subcategoria-container-' + categoriaId).html(response);
-                    },
-                    error: function() {
-                        $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
-                    }
-                });
-            }
-            
-            // Atualizar o estado na sessão
-            $.post('atualizar_estado_categoria.php', {
-                projeto_id: <?php echo $projeto_id; ?>,
-                categoria_id: categoriaId,
-                expandido: !isExpandido
-            });
-        });
-        
-        // Confirmação de exclusão
-        $(document).on('click', '.btn-acao.excluir', function(e) {
-            if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
-                e.preventDefault();
-            }
-        });
-        
-        // Adicionar tooltips nos valores de execução do orçamento
-        $('.resumo-valor').each(function() {
-            if ($(this).hasClass('positivo')) {
-                $(this).attr('title', 'Orçamento dentro do limite planejado');
-            } else if ($(this).hasClass('negativo')) {
-                $(this).attr('title', 'Orçamento excedido! Atenção necessária');
-            }
-        });
-        
-        // Adicionar tooltips nas barras de progresso
-        $('.progress-container').each(function() {
-            let percentagem = $(this).find('.progress-text').text();
-            let mensagem = '';
-            
-            if (percentagem.includes('100')) {
-                mensagem = 'Orçamento totalmente utilizado';
-            } else if (parseFloat(percentagem) > 100) {
-                mensagem = 'Orçamento excedido!';
-            } else {
-                mensagem = 'Progresso da execução orçamentária';
-            }
-            
-            $(this).attr('title', mensagem);
-        });
-        
-        // Efeito de hover nas linhas de categoria
-        $('.categoria-row').hover(
-            function() {
-                $(this).css('background-color', '#f0f7ff');
-            },
-            function() {
-                $(this).css('background-color', '');
-            }
-        );
-        
-        // Adicionar animação suave quando expandir/colapsar categorias
-        $('.subcategorias-row').on('transitionend', function() {
-            if (!$(this).hasClass('oculto')) {
-                $('html, body').animate({
-                    scrollTop: $(this).offset().top - 100
-                }, 300);
-            }
-        });
-        
-        // Destacar visualmente as categorias com orçamento crítico
-        $('.categoria-row').each(function() {
-            const tdDelta = $(this).find('td:nth-child(4)');
-            if (tdDelta.hasClass('negativo')) {
-                $(this).find('td').css('font-weight', 'bold');
-                $(this).find('.ver-despesas').css('color', '#dc3545');
-            }
-        });
-    });
-    </script>
-    
-    <?php include '../includes/footer.php'; ?>
-</body>
-</html>
+		       // Manipular clique nos ícones de expansão
+		       $(document).on('click', '.toggle-icon.expandir', function() {
+		           var categoriaId = $(this).data('id');
+		           var isExpandido = $(this).text() === '−';
+           
+		           // Alternar o símbolo
+		           $(this).text(isExpandido ? '+' : '−');
+           
+		           // Mostrar/ocultar a linha de subcategorias
+		           $('.subcategorias-' + categoriaId).toggleClass('oculto');
+           
+		           // Se estiver expandindo e o container estiver vazio, carregar via AJAX
+		           if (!isExpandido && $('#subcategoria-container-' + categoriaId).children().length === 0) {
+		               $('#subcategoria-container-' + categoriaId).html('<div class="loading-spinner">Carregando...</div>');
+               
+		               $.ajax({
+		                   url: '../relatorios/obter_subcategorias.php',
+		                   method: 'POST',
+		                   data: { 
+		                       categoria_id: categoriaId,
+		                       mostrar_despesas: 0
+		                   },
+		                   success: function(response) {
+		                       $('#subcategoria-container-' + categoriaId).html(response);
+		                   },
+		                   error: function() {
+		                       $('#subcategoria-container-' + categoriaId).html('<div class="erro">Erro ao carregar subcategorias.</div>');
+		                   }
+		               });
+		           }
+           
+		           // Atualizar o estado na sessão
+		           $.post('atualizar_estado_categoria.php', {
+		               projeto_id: <?php echo $projeto_id; ?>,
+		               categoria_id: categoriaId,
+		               expandido: !isExpandido
+		           });
+		       });
+       
+		       // Confirmação de exclusão
+		       $(document).on('click', '.btn-acao.excluir', function(e) {
+		           if (!confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) {
+		               e.preventDefault();
+		           }
+		       });
+       
+		       // Adicionar tooltips nos valores de execução do orçamento
+		       $('.resumo-valor').each(function() {
+		           if ($(this).hasClass('positivo')) {
+		               $(this).attr('title', 'Orçamento dentro do limite planejado');
+		           } else if ($(this).hasClass('negativo')) {
+		               $(this).attr('title', 'Orçamento excedido! Atenção necessária');
+		           }
+		       });
+       
+		       // Adicionar tooltips nas barras de progresso
+		       $('.progress-container').each(function() {
+		           let percentagem = $(this).find('.progress-text').text();
+		           let mensagem = '';
+           
+		           if (percentagem.includes('100')) {
+		               mensagem = 'Orçamento totalmente utilizado';
+		           } else if (parseFloat(percentagem) > 100) {
+		               mensagem = 'Orçamento excedido!';
+		           } else {
+		               mensagem = 'Progresso da execução orçamentária';
+		           }
+           
+		           $(this).attr('title', mensagem);
+		       });
+       
+		       // Efeito de hover nas linhas de categoria
+		       $('.categoria-row').hover(
+		           function() {
+		               $(this).css('background-color', '#f0f7ff');
+		           },
+		           function() {
+		               $(this).css('background-color', '');
+		           }
+		       );
+       
+		       // Adicionar animação suave quando expandir/colapsar categorias
+		       $('.subcategorias-row').on('transitionend', function() {
+		           if (!$(this).hasClass('oculto')) {
+		               $('html, body').animate({
+		                   scrollTop: $(this).offset().top - 100
+		               }, 300);
+		           }
+		       });
+       
+		       // Destacar visualmente as categorias com orçamento crítico
+		       $('.categoria-row').each(function() {
+		           const tdDelta = $(this).find('td:nth-child(4)');
+		           if (tdDelta.hasClass('negativo')) {
+		               $(this).find('td').css('font-weight', 'bold');
+		               $(this).find('.ver-despesas').css('color', '#dc3545');
+		           }
+		       });
+		   });
+		   </script>
+   
+		   <?php include '../includes/footer.php'; ?>
+		</body>
+		</html>
