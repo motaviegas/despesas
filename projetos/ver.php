@@ -31,12 +31,16 @@ $total_global = isset($categorias_com_totais[0]) ? $categorias_com_totais[0] : [
    'delta' => 0
 ];
 
+// Obter contagem real de despesas para este projeto específico
+$stmt = $pdo->prepare("SELECT COUNT(*) as total FROM despesas WHERE projeto_id = :projeto_id");
+$stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+$stmt->execute();
+$contagem_despesas = $stmt->fetch()['total'];
+
 // Aplicar valores calculados corretamente
 $estatisticas = [
    'total_categorias' => count($categorias),
-   'total_despesas' => count(array_filter($categorias_com_totais, function($cat) {
-       return isset($cat['total_despesas']) && $cat['total_despesas'] > 0;
-   })),
+   'total_despesas' => $contagem_despesas, // Corrigido: conta apenas as despesas deste projeto
    'soma_despesas' => $total_global['total_despesas'],
    'orcamento_total' => $total_global['budget']
 ];
