@@ -30,20 +30,34 @@ $sql_filtro = $mostrar_arquivados ? "" : "AND arquivado = FALSE";
 
 // Melhorado: cálculo correto do orçamento total para cada projeto
 $stmt = $pdo->prepare("
-    SELECT 
-        p.id, p.nome, p.descricao, p.data_criacao, p.arquivado,
-        (SELECT COALESCE(SUM(budget), 0) FROM categorias WHERE projeto_id = p.id AND nivel = 1) as orcamento_total,
-        (SELECT COALESCE(SUM(valor), 0) FROM despesas WHERE projeto_id = p.id) as total_despesas
-    FROM 
-        projetos p
-    WHERE 
-        p.criado_por = :usuario_id $sql_filtro
-    ORDER BY 
-        p.arquivado ASC, p.data_criacao DESC
+    SELECT p.id, p.nome, p.descricao, p.data_criacao, p.arquivado
+    FROM projetos p
+    WHERE p.criado_por = :usuario_id $sql_filtro
+    ORDER BY p.arquivado ASC, p.data_criacao DESC
 ");
 $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
 $stmt->execute();
 $projetos = $stmt->fetchAll();
+
+// Processar cada projeto para obter o orçamento total calculado corretamente
+foreach ($projetos as &$projeto) {
+    // Obter categorias e calcular totais
+    $categorias = obterCategoriasDespesas($pdo, $projeto['id']);
+    $categorias_com_totais = calcularTotaisCategoriasDespesas($categorias);
+    
+    // Obter o total global (id 0)
+    $total_global = isset($categorias_com_totais[0]) ? $categorias_com_totais[0] : [
+        'budget' => 0,
+        'total_despesas' => 0,
+        'delta' => 0
+    ];
+    
+    // Adicionar informações de orçamento ao projeto
+    $projeto['orcamento_total'] = $total_global['budget'];
+    $projeto['total_despesas'] = $total_global['total_despesas'];
+    $projeto['orcamento_remanescente'] = $total_global['delta'];
+}
+unset($projeto);
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -182,8 +196,8 @@ $projetos = $stmt->fetchAll();
                         
                         <div class="financeiro-info">
                             <span>Saldo:</span>
-                            <span class="orcamento-valor <?php echo ($projeto['orcamento_total'] - $projeto['total_despesas'] >= 0) ? 'positivo' : 'negativo'; ?>">
-                                <?php echo number_format($projeto['orcamento_total'] - $projeto['total_despesas'], 2, ',', '.'); ?> €
+                            <span class="orcamento-valor <?php echo ($projeto['orcamento_remanescente'] >= 0) ? 'positivo' : 'negativo'; ?>">
+                                <?php echo number_format($projeto['orcamento_remanescente'], 2, ',', '.'); ?> €
                             </span>
                         </div>
                         
