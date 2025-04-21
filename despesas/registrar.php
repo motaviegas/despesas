@@ -117,7 +117,7 @@ $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
 $stmt->execute();
 $categorias = $stmt->fetchAll();
 
-// Obter os fornecedores mais frequentes - CORRIGIDO AQUI
+// Obter os fornecedores mais frequentes
 $stmt = $pdo->prepare("
     SELECT DISTINCT f.nome
     FROM fornecedores f
@@ -154,23 +154,25 @@ $saldo = $estatisticas['orcamento_total'] - $estatisticas['total_gasto'];
 $percentagem_execucao = ($estatisticas['orcamento_total'] > 0) ? 
     ($estatisticas['total_gasto'] / $estatisticas['orcamento_total']) * 100 : 0;
 
-// Determinar a classe do saldo com base na percentagem
+// Determinar a classe do saldo e da barra de progresso
+if ($saldo < 0) {
+    $saldo_classe = "negativo";
+} else {
+    $saldo_classe = "positivo";
+}
+
+// Determinar a classe da barra de progresso com base na percentagem
 if ($percentagem_execucao <= 50) {
     $barra_classe = "verde";
-    $saldo_classe = "positivo";
 } elseif ($percentagem_execucao <= 75) {
     $barra_classe = "amarelo";
-    $saldo_classe = "positivo";
 } elseif ($percentagem_execucao <= 95) {
     $barra_classe = "laranja";
-    $saldo_classe = "positivo";
 } else {
     if ($percentagem_execucao > 100) {
         $barra_classe = "vermelho-intenso";
-        $saldo_classe = "ultrapassado";
     } else {
         $barra_classe = "vermelho";
-        $saldo_classe = "negativo";
     }
 }
 ?>
@@ -192,14 +194,14 @@ if ($percentagem_execucao <= 50) {
         
         .form-principal {
             background-color: white;
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 25px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
         
         .sidebar {
             background-color: white;
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
@@ -366,15 +368,98 @@ if ($percentagem_execucao <= 50) {
             width: 100%;
         }
         
+        /* Classes específicas para o estado do orçamento */
+        .progress-container {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            margin: 15px 0;
+            position: relative;
+            height: 25px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .progress-bar {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.6s;
+        }
+        
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #333;
+            font-weight: bold;
+            text-shadow: 0 0 2px rgba(255,255,255,0.7);
+        }
+        
+        .progress-bar.verde {
+            background: linear-gradient(to right, #28a745, #5cb85c);
+        }
+        
+        .progress-bar.amarelo {
+            background: linear-gradient(to right, #ffc107, #ffda6a);
+        }
+        
+        .progress-bar.laranja {
+            background: linear-gradient(to right, #fd7e14, #f8b67d);
+        }
+        
+        .progress-bar.vermelho {
+            background: linear-gradient(to right, #dc3545, #e66975);
+        }
+        
+        .progress-bar.vermelho-intenso {
+            background: linear-gradient(to right, #b71c1c, #dc3545);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+        
+        .positivo { 
+            color: #28a745; 
+        }
+        
+        .negativo { 
+            color: #dc3545; 
+            font-weight: bold;
+        }
+        
+        .ultrapassado {
+            color: #b71c1c;
+            font-weight: 900;
+            animation: shake 0.5s;
+        }
+        
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+        
+        /* Melhorias para dispositivos móveis */
         @media (max-width: 992px) {
             .form-container {
                 grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                order: -1; /* Mostrar o resumo primeiro em dispositivos móveis */
             }
         }
     </style>
 </head>
 <body>
-    <?php include '../includes/header.php'; ?>
+<?php include '../includes/header.php'; ?>
     
     <div class="container">
         <h1>Registrar Despesa</h1>
@@ -463,7 +548,9 @@ if ($percentagem_execucao <= 50) {
                     
                     <div class="resumo-item">
                         <span class="resumo-label">Saldo:</span>
-                        <span class="resumo-valor <?php echo $saldo_classe; ?>"><?php echo number_format($saldo, 2, ',', '.'); ?> €</span>
+                        <span class="resumo-valor <?php echo $saldo_classe; ?>">
+                            <?php echo number_format($saldo, 2, ',', '.'); ?> €
+                        </span>
                     </div>
                     
                     <div class="progress-container">
