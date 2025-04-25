@@ -142,7 +142,7 @@ $ultimas_despesas = $stmt->fetchAll();
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Gestão de Eventos</title>
+  <title>Dashboard - <?php echo $system_name ?? 'Budget control'; ?></title>
   <link rel="stylesheet" href="assets/css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
   <style>
@@ -425,7 +425,7 @@ $ultimas_despesas = $stmt->fetchAll();
 <?php include 'includes/header.php'; ?>
   
      <div class="container">
-         <h1>Dashboard</h1>
+         <h1>Dashboard - <?php echo $system_name ?? 'Budget control'; ?></h1>
       
          <?php if (!empty($mensagem)): ?>
              <div class="alert alert-info"><?php echo $mensagem; ?></div>
