@@ -21,6 +21,28 @@ function check_php_version($required_version) {
     return version_compare(PHP_VERSION, $required_version, '>=');
 }
 
+$requirements = [
+    'php' => '7.4.0',
+    'extensions' => [
+        'pdo',
+        'pdo_mysql',
+        'gd',
+        'fileinfo',
+        'json',
+        'session'
+    ],
+    'mysql' => [
+        'version' => '5.7.0'
+    ]
+];
+
+// 2.1 Função para verificar a versão do MySQL
+
+if ($connection['success']) {
+    $mysql_check = check_mysql_version($connection['pdo'], $requirements['mysql']['version']);
+    // Exibir resultado na interface
+}
+
 // 3. Função para verificar extensões do PHP
 function check_extension($extension) {
     return extension_loaded($extension);
@@ -179,7 +201,7 @@ function generate_config_file($host, $db_name, $username, $password, $system_nam
 \$db_name = '$db_name';
 \$username = '$username';
 \$password = '$password';
-\$base_url = '';
+\$base_url = '$base_url';
 \$system_name = '$system_name';
 
 try {

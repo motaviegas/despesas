@@ -9,8 +9,14 @@ function verificarLogin() {
 }
 
 function getBaseURL() {
-    global $base_url;
-    return $base_url;
+   global $base_url;
+   if (empty($base_url)) {
+       $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off' ? 'https://' : 'http://';
+       $host = $_SERVER['HTTP_HOST'];
+       $script = dirname($_SERVER['SCRIPT_NAME']);
+       return $protocol . $host . $script;
+   }
+   return $base_url;
 }
 
 function ehAdmin() {

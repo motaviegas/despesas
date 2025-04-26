@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirmar_exclusao']))
         
         // Verificar se há anexo e excluir o arquivo
         if (!empty($despesa['anexo_path'])) {
-            $anexo_full_path = '../assets/arquivos/' . $despesa['anexo_path'];
+            $anexo_full_path = dirname(__FILE__) . '/../assets/arquivos/' . $despesa['anexo_path'];
             if (file_exists($anexo_full_path)) {
                 unlink($anexo_full_path);
             }

@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Processar anexo
         $anexo_path = null;
         if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] == 0) {
-            $upload_dir = '../assets/arquivos/';
+            $upload_dir = dirname(__FILE__) . '/../assets/arquivos/';
             
             // Criar o diretório se não existir
             if (!is_dir($upload_dir)) {

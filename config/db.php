@@ -1,10 +1,11 @@
 <?php
-$host = '10.1.1.9';
-$db_name = 'gestao_eventos';
-$username = 'fatura'; // Altere conforme seu ambiente
-$password = 'PdFs1974!'; // Altere conforme seu ambiente
-// Adicione isso ao db.php
-$base_url = '/gestao-eventos';
+$host = $_ENV['DB_HOST'] ?? 'localhost';
+$db_name = $_ENV['DB_NAME'] ?? 'gestao_eventos';
+$username = $_ENV['DB_USER'] ?? 'root';
+$password = $_ENV['DB_PASS'] ?? '';
+$base_url = '';
+$system_name = $_ENV['SYSTEM_NAME'] ?? 'Gestão de Eventos';
+
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db_name;charset=utf8", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
