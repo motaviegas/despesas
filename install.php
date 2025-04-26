@@ -311,15 +311,23 @@ function process_logo_upload() {
 // 9. Função para testar a conexão com o banco de dados
 function test_database_connection($host, $db_name, $username, $password) {
     try {
-        $pdo = new PDO("mysql:host=$host", $username, $password);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        // Tente usar IP se for localhost
+        $connection_host = ($host === 'localhost') ? '127.0.0.1' : $host;
+        
+        // Primeiro conectar sem especificar o banco de dados
+        $pdo = new PDO("mysql:host=$connection_host;charset=utf8", $username, $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 5
+        ]);
         
         // Tentar criar o banco de dados se não existir
         $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         
         // Conectar ao banco de dados criado
-        $pdo = new PDO("mysql:host=$host;dbname=$db_name", $username, $password);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo = new PDO("mysql:host=$connection_host;dbname=$db_name;charset=utf8", $username, $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 5
+        ]);
         
         return ['success' => true, 'pdo' => $pdo];
     } catch (PDOException $e) {
