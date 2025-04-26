@@ -1,6 +1,11 @@
 <?php
 session_start();
 
+// 0.8 - Depuração de sessão
+error_log("SESSION DUMP: " . print_r($_SESSION, true));
+// 0.9 - No início do arquivo install.php, acrescente:
+$debug_info = [];
+
 // 1. Definição de variáveis globais e configurações iniciais
 $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
 $errors = [];
@@ -311,25 +316,41 @@ function process_logo_upload() {
 // 9. Função para testar a conexão com o banco de dados
 function test_database_connection($host, $db_name, $username, $password) {
     try {
-        // Tente usar IP se for localhost
-        $connection_host = ($host === 'localhost') ? '127.0.0.1' : $host;
+        // Tentar diferentes métodos de conexão
+        $connection_methods = [
+            "mysql:host=$host",
+            "mysql:host=127.0.0.1",
+            "mysql:unix_socket=/var/run/mysqld/mysqld.sock"
+        ];
         
-        // Primeiro conectar sem especificar o banco de dados
-        $pdo = new PDO("mysql:host=$connection_host;charset=utf8", $username, $password, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_TIMEOUT => 5
-        ]);
+        $connected = false;
+        $last_error = null;
         
-        // Tentar criar o banco de dados se não existir
+        foreach ($connection_methods as $dsn_prefix) {
+            try {
+                // Conectar sem especificar o banco
+                $pdo = new PDO("$dsn_prefix", $username, $password);
+                $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                $connected = true;
+                break;
+            } catch (PDOException $e) {
+                $last_error = $e;
+                continue;
+            }
+        }
+        
+        if (!$connected) {
+            throw $last_error;
+        }
+        
+        // Tentar criar o banco de dados
         $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         
-        // Conectar ao banco de dados criado
-        $pdo = new PDO("mysql:host=$connection_host;dbname=$db_name;charset=utf8", $username, $password, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_TIMEOUT => 5
-        ]);
+        // Conectar ao banco criado
+        $pdo = new PDO("$dsn_prefix;dbname=$db_name;charset=utf8", $username, $password);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        return ['success' => true, 'pdo' => $pdo];
+        return ['success' => true, 'pdo' => $pdo, 'connection_method' => $dsn_prefix];
     } catch (PDOException $e) {
         return ['success' => false, 'message' => $e->getMessage()];
     }
@@ -353,25 +374,31 @@ function create_admin_user($pdo, $email, $password) {
 
 // 11. Função para processar o formulário do Step 2
 function process_step2() {
+    global $debug_info;
+    
     $db_host = $_POST['db_host'] ?? '';
     $db_name = $_POST['db_name'] ?? '';
     $db_user = $_POST['db_user'] ?? '';
     $db_pass = $_POST['db_pass'] ?? '';
     
+    // Depuração
+    error_log("process_step2: Host=$db_host, DB=$db_name, User=$db_user");
+    
     if (empty($db_host) || empty($db_name) || empty($db_user)) {
         return ['success' => false, 'message' => 'Todos os campos do banco de dados são obrigatórios, exceto a senha se o usuário não tiver senha.'];
     }
     
-    $connection = test_database_connection($db_host, $db_name, $db_user, $db_pass);
-    if (!$connection['success']) {
-        return ['success' => false, 'message' => 'Erro ao conectar ao banco de dados: ' . $connection['message']];
-    }
-    
+    // Armazenar valores na sessão antes de testar conexão
     $_SESSION['db_host'] = $db_host;
     $_SESSION['db_name'] = $db_name;
     $_SESSION['db_user'] = $db_user;
     $_SESSION['db_pass'] = $db_pass;
-    $_SESSION['pdo'] = $connection['pdo'];
+    
+    // Testar conexão
+    $connection = test_database_connection($db_host, $db_name, $db_user, $db_pass);
+    if (!$connection['success']) {
+        return ['success' => false, 'message' => 'Erro ao conectar ao banco de dados: ' . $connection['message']];
+    }
     
     return ['success' => true];
 }
@@ -414,7 +441,41 @@ function process_step3() {
 // 13. Função para finalizar a instalação
 function finalize_installation() {
     try {
-        $pdo = new PDO("mysql:host={$_SESSION['db_host']};dbname={$_SESSION['db_name']}", $_SESSION['db_user'], $_SESSION['db_pass']);
+	    // Depuração
+	           error_log("Finalizando instalação: Host=" . ($_SESSION['db_host'] ?? 'VAZIO') . 
+	                     ", DB=" . ($_SESSION['db_name'] ?? 'VAZIO') . 
+	                     ", User=" . ($_SESSION['db_user'] ?? 'VAZIO'));
+        
+	           // Tentar diferentes métodos de conexão
+	           $connection_host = ($_SESSION['db_host'] === 'localhost') ? '127.0.0.1' : $_SESSION['db_host'];
+	           $db_user = $_SESSION['db_user'];
+	           $db_pass = $_SESSION['db_pass'] ?? '';
+        
+	           try {
+	               $pdo = new PDO("mysql:host=$connection_host;dbname={$_SESSION['db_name']}", $db_user, $db_pass);
+	           } catch (PDOException $e) {
+	               error_log("Erro na primeira tentativa: " . $e->getMessage());
+	               // Tentar sem especificar o banco de dados primeiro
+	               $pdo = new PDO("mysql:host=$connection_host", $db_user, $db_pass);
+	               // Criar o banco de dados
+	               $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$_SESSION['db_name']}` 
+	                          DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+	               // Conectar ao banco de dados criado
+	               $pdo = new PDO("mysql:host=$connection_host;dbname={$_SESSION['db_name']}", 
+	                             $db_user, $db_pass);
+	           }
+        
+	           $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+		// Tentar diferentes métodos de conexão
+        $connection_host = ($_SESSION['db_host'] === 'localhost') ? '127.0.0.1' : $_SESSION['db_host'];
+        
+        try {
+            $pdo = new PDO("mysql:host={$connection_host};dbname={$_SESSION['db_name']}", $_SESSION['db_user'], $_SESSION['db_pass']);
+        } catch (PDOException $e) {
+            // Tentar socket alternativo se falhar
+            $pdo = new PDO("mysql:unix_socket=/var/run/mysqld/mysqld.sock;dbname={$_SESSION['db_name']}", $_SESSION['db_user'], $_SESSION['db_pass']);
+        }
+        
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
         // Criar tabelas
@@ -664,7 +725,20 @@ if (file_exists('install_lock') && !isset($_GET['force'])) {
                     </div>
                     
                     <h4>Requisitos do Sistema</h4>
-                    <div class="card mb-4">
+                    
+					<div class="card mb-4">
+					    <div class="card-header">
+					        <h5>Informações do Banco de Dados</h5>
+					    </div>
+					    <div class="card-body">
+					        <p><strong>Host:</strong> <?php echo $_SESSION['db_host'] ?? 'Não definido'; ?></p>
+					        <p><strong>Nome do Banco:</strong> <?php echo $_SESSION['db_name'] ?? 'Não definido'; ?></p>
+					        <p><strong>Usuário:</strong> <?php echo $_SESSION['db_user'] ?? 'Não definido'; ?></p>
+					        <p><strong>Estado da Sessão:</strong> <?php echo session_status() === PHP_SESSION_ACTIVE ? 'Ativa' : 'Inativa'; ?></p>
+					    </div>
+					</div>
+					
+					<div class="card mb-4">
                         <div class="card-body">
                             <div class="requirement-item">
                                 <span>Versão do PHP (>= <?php echo $requirements['php']; ?>)</span>
@@ -796,51 +870,51 @@ if (file_exists('install_lock') && !isset($_GET['force'])) {
                         </div>
                     </form>
                     
-                <?php elseif ($step == 4): ?>
-                    <!-- Passo 4: Confirmação e Instalação -->
-                    <h2>Passo 4: Confirmação e Instalação</h2>
-                    <div class="instructions">
-                        <p>Revise as informações abaixo e clique em "Concluir Instalação" para finalizar o processo.</p>
-                    </div>
-                    
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5>Informações do Banco de Dados</h5>
-                        </div>
-                        <div class="card-body">
-                            <p><strong>Host:</strong> <?php echo $_SESSION['db_host']; ?></p>
-                            <p><strong>Nome do Banco:</strong> <?php echo $_SESSION['db_name']; ?></p>
-                            <p><strong>Usuário:</strong> <?php echo $_SESSION['db_user']; ?></p>
-                        </div>
-                    </div>
-                    
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5>Informações do Sistema</h5>
-                        </div>
-                        <div class="card-body">
-                            <p><strong>Nome do Sistema:</strong> <?php echo $_SESSION['system_name']; ?></p>
-                            <p><strong>E-mail do Administrador:</strong> <?php echo $_SESSION['admin_email']; ?></p>
-                            <p><strong>Logo:</strong> <?php echo isset($_FILES['logo']) && $_FILES['logo']['error'] == 0 ? 'Personalizado' : 'Padrão'; ?></p>
-                        </div>
-                    </div>
-                    
-                    <form method="post" action="?step=4">
-                        <div class="alert alert-warning">
-                            <p><strong>Atenção:</strong> Ao concluir a instalação, serão criados:</p>
-                            <ul>
-                                <li>O banco de dados e suas tabelas</li>
-                                <li>Arquivos de configuração</li>
-                                <li>Diretórios para armazenar arquivos enviados</li>
-                            </ul>
-                            <p>Certifique-se de que todas as informações estão corretas.</p>
-                        </div>
-                        
-                        <div class="step-buttons">
-                            <a href="?step=3" class="btn btn-secondary">Voltar</a>
-                            <button type="submit" class="btn btn-success">Concluir Instalação</button>
-                        </div>
-                    </form>
+				<?php elseif ($step == 4): ?>
+				    <!-- Passo 4: Confirmação e Instalação -->
+				    <h2>Passo 4: Confirmação e Instalação</h2>
+				    <div class="instructions">
+				        <p>Revise as informações abaixo e clique em "Concluir Instalação" para finalizar o processo.</p>
+				    </div>
+    
+				    <div class="card mb-4">
+				        <div class="card-header">
+				            <h5>Informações do Banco de Dados</h5>
+				        </div>
+				        <div class="card-body">
+				            <p><strong>Host:</strong> <?php echo isset($_SESSION['db_host']) ? htmlspecialchars($_SESSION['db_host']) : 'Não definido'; ?></p>
+				            <p><strong>Nome do Banco:</strong> <?php echo isset($_SESSION['db_name']) ? htmlspecialchars($_SESSION['db_name']) : 'Não definido'; ?></p>
+				            <p><strong>Usuário:</strong> <?php echo isset($_SESSION['db_user']) ? htmlspecialchars($_SESSION['db_user']) : 'Não definido'; ?></p>
+				        </div>
+				    </div>
+    
+				    <div class="card mb-4">
+				        <div class="card-header">
+				            <h5>Informações do Sistema</h5>
+				        </div>
+				        <div class="card-body">
+				            <p><strong>Nome do Sistema:</strong> <?php echo htmlspecialchars($_SESSION['system_name'] ?? 'Não definido'); ?></p>
+				            <p><strong>E-mail do Administrador:</strong> <?php echo htmlspecialchars($_SESSION['admin_email'] ?? 'Não definido'); ?></p>
+				            <p><strong>Logo:</strong> <?php echo isset($_FILES['logo']) && $_FILES['logo']['error'] == 0 ? 'Personalizado' : 'Padrão'; ?></p>
+				        </div>
+				    </div>
+    
+				    <form method="post" action="?step=4">
+				        <div class="alert alert-warning">
+				            <p><strong>Atenção:</strong> Ao concluir a instalação, serão criados:</p>
+				            <ul>
+				                <li>O banco de dados e suas tabelas</li>
+				                <li>Arquivos de configuração</li>
+				                <li>Diretórios para armazenar arquivos enviados</li>
+				            </ul>
+				            <p>Certifique-se de que todas as informações estão corretas.</p>
+				        </div>
+        
+				        <div class="step-buttons">
+				            <a href="?step=3" class="btn btn-secondary">Voltar</a>
+				            <button type="submit" class="btn btn-success">Concluir Instalação</button>
+				        </div>
+				    </form>
                     
                 <?php elseif ($step == 5): ?>
                     <!-- Passo 5: Instalação Concluída -->
@@ -872,24 +946,29 @@ if (file_exists('install_lock') && !isset($_GET['force'])) {
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script>
-        // 16. Script para preview do logo
-        document.getElementById('logo').addEventListener('change', function(event) {
-            const fileInput = event.target;
-            const logoPreview = document.getElementById('logo-preview');
+		// Script para preview do logo
+		document.addEventListener('DOMContentLoaded', function() {
+		    const logoInput = document.getElementById('logo');
+		    if (logoInput) {
+		        logoInput.addEventListener('change', function(event) {
+		            const fileInput = event.target;
+		            const logoPreview = document.getElementById('logo-preview');
             
-            if (fileInput.files && fileInput.files[0]) {
-                const reader = new FileReader();
+		            if (logoPreview && fileInput.files && fileInput.files[0]) {
+		                const reader = new FileReader();
                 
-                reader.onload = function(e) {
-                    logoPreview.src = e.target.result;
-                    logoPreview.style.display = 'block';
-                }
+		                reader.onload = function(e) {
+		                    logoPreview.src = e.target.result;
+		                    logoPreview.style.display = 'block';
+		                }
                 
-                reader.readAsDataURL(fileInput.files[0]);
-            } else {
-                logoPreview.style.display = 'none';
-            }
-        });
+		                reader.readAsDataURL(fileInput.files[0]);
+		            } else if (logoPreview) {
+		                logoPreview.style.display = 'none';
+		            }
+		        });
+		    }
+		});
         
         // 17. Validação do formulário
         document.querySelectorAll('form').forEach(form => {
