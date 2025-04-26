@@ -1,10 +1,10 @@
 <?php
 $host = $_ENV['DB_HOST'] ?? 'localhost';
-$db_name = $_ENV['DB_NAME'] ?? 'gestao_eventos';
+$db_name = $_ENV['DB_NAME'] ?? 'budget';
 $username = $_ENV['DB_USER'] ?? 'root';
 $password = $_ENV['DB_PASS'] ?? '';
 $base_url = '';
-$system_name = $_ENV['SYSTEM_NAME'] ?? 'Gestão de Eventos';
+$system_name = $_ENV['SYSTEM_NAME'] ?? 'Budget Control';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db_name;charset=utf8", $username, $password);
