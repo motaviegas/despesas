@@ -4,6 +4,7 @@ session_start();
 require_once 'config/db.php';
 
 // 1.1 SECURITY HEADERS
+header("Content-Type: text/html; charset=UTF-8");
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("X-XSS-Protection: 1; mode=block");
@@ -13,7 +14,7 @@ $error = '';
 $login_attempted = false;
 
 // 3.0 LOGIN PROCESSING
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
     $login_attempted = true;
     
     // 3.1 INPUT SANITIZATION
@@ -35,11 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             // 3.4 USER AUTHENTICATION
             if ($usuario = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 // 3.4.1 ACCOUNT STATUS CHECK
-                if (!$usuario['ativo']) {
-                    $error = "Account not activated. Please check your email.";
-                }
+				if (!usuario['ativo']) {
+				error = "Account not activated. Please check your email.";
+				}
                 // 3.4.2 PASSWORD VERIFICATION
-                elseif (password_verify($senha, $usuario['senha'])) {
+                elseif (password_verify(senha,usuario['senha'])) {
                     // 3.4.3 SESSION CREATION
                     $_SESSION['usuario_id'] = $usuario['id'];
                     $_SESSION['email'] = $usuario['email'];
@@ -47,33 +48,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $_SESSION['logged_in'] = true;
                     $_SESSION['last_activity'] = time();
                     
-                    // 3.4.4 SESSION REGENERATION
-                    session_regenerate_id(true);
+					// 3.4.4 SESSION REGENERATION
+					session_regenerate_id(true);
                     
                     // 3.4.5 UPDATE LAST LOGIN
                     $update_stmt = $pdo->prepare("UPDATE usuarios SET ultimo_login = NOW() WHERE id = :id");
                     $update_stmt->bindParam(':id', $usuario['id'], PDO::PARAM_INT);
                     $update_stmt->execute();
                     
-                    // 3.4.6 REDIRECTION
-                    header('Location: dashboard.php');
-                    exit;
-                } else {
-                    $error = "Invalid credentials.";
-                }
-            } else {
-                $error = "Invalid credentials.";
-            }
-        } catch (PDOException $e) {
-            error_log("Login error: " . $e->getMessage());
-            $error = "System error. Please try again later.";
-        }
-    }
+					// 3.4.6 REDIRECTION
+					if (!headers_sent()) {
+					    header('Location: dashboard.php');
+					    exit();
+					} else {
+					    echo '<script>window.location.href="dashboard.php";</script>';
+					    exit();
+					}
+					    } else {
+					        $error = "Invalid credentials.";
+					    }
+					} else {
+					    $error = "Invalid credentials.";
+					}
     
-    // 3.5 FAILED LOGIN HANDLING
-    if (!empty($error) {
-        error_log("Failed login attempt for email: " . $email);
-    }
+					// 3.5 FAILED LOGIN HANDLING
+					if (!empty($error)) {
+					    error_log("Failed login attempt for email: " . $email);
+					}
 }
 ?>
 <!DOCTYPE html>
@@ -114,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <!-- 5.3.2 PASSWORD FIELD -->
             <div class="form-group">
                 <label for="senha">Password:</label>
-                <input type="password" id="senha" name="senha" required minlength="8">
+                <input type="password" id="senha" name="senha" required>
             </div>
             
             <!-- 5.3.3 SUBMIT BUTTON -->
