@@ -1,31 +1,16 @@
 <?php
+// 1.0 INITIALIZATION AND SESSION SETUP
 session_start();
 
-// 0.8 - Depuração de sessão
+// 1.1 DEBUGGING SETTINGS
 error_log("SESSION DUMP: " . print_r($_SESSION, true));
-// 0.9 - No início do arquivo install.php, acrescente:
 $debug_info = [];
 
-// 1. Definição de variáveis globais e configurações iniciais
+// 1.2 INSTALLATION STEPS CONTROL
 $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
 $errors = [];
-$requirements = [
-    'php' => '7.4.0',
-    'extensions' => [
-        'pdo',
-        'pdo_mysql',
-        'gd',
-        'fileinfo',
-        'json',
-        'session'
-    ]
-];
 
-// 2. Função para verificar a versão do PHP
-function check_php_version($required_version) {
-    return version_compare(PHP_VERSION, $required_version, '>=');
-}
-
+// 1.3 SYSTEM REQUIREMENTS DEFINITION
 $requirements = [
     'php' => '7.4.0',
     'extensions' => [
@@ -41,31 +26,67 @@ $requirements = [
     ]
 ];
 
-// 2.1 Função para verificar a versão do MySQL
+// 2.0 REQUIREMENT CHECK FUNCTIONS
 
-if ($connection['success']) {
-    $mysql_check = check_mysql_version($connection['pdo'], $requirements['mysql']['version']);
-    // Exibir resultado na interface
+/**
+ * 2.1 CHECK PHP VERSION COMPATIBILITY
+ * @param string $required_version Minimum required PHP version
+ * @return bool True if version is compatible
+ */
+function check_php_version($required_version) {
+    return version_compare(PHP_VERSION, $required_version, '>=');
 }
 
-// 3. Função para verificar extensões do PHP
+/**
+ * 2.2 CHECK MYSQL VERSION COMPATIBILITY
+ * @param PDO $pdo Database connection
+ * @param string $required_version Minimum required MySQL version
+ * @return array Result with success status and version info
+ */
+function check_mysql_version($pdo, $required_version) {
+    try {
+        $version = $pdo->query("SELECT VERSION()")->fetchColumn();
+        return [
+            'success' => version_compare($version, $required_version, '>='),
+            'version' => $version
+        ];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * 2.3 CHECK PHP EXTENSION AVAILABILITY
+ * @param string $extension Extension name to check
+ * @return bool True if extension is loaded
+ */
 function check_extension($extension) {
     return extension_loaded($extension);
 }
 
-// 4. Função para criar tabelas no banco de dados
+// 3.0 DATABASE OPERATIONS
+
+/**
+ * 3.1 CREATE DATABASE TABLES
+ * @param PDO $pdo Database connection
+ * @return bool|string True on success, error message on failure
+ */
 function create_database_tables($pdo) {
     try {
-        // 4.1 Tabela de usuários
+        // 3.1.1 USERS TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS usuarios (
             id INT AUTO_INCREMENT PRIMARY KEY,
             email VARCHAR(255) NOT NULL UNIQUE,
             senha VARCHAR(255) NOT NULL,
             tipo_conta ENUM('admin', 'normal') NOT NULL DEFAULT 'normal',
-            data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ativo TINYINT(1) DEFAULT 0,
+            token_ativacao VARCHAR(255),
+            data_registo DATETIME,
+            ultimo_login DATETIME
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.2 Tabela de projetos
+        // 3.1.2 PROJECTS TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS projetos (
             id INT AUTO_INCREMENT PRIMARY KEY,
             nome VARCHAR(255) NOT NULL,
@@ -77,7 +98,7 @@ function create_database_tables($pdo) {
             FOREIGN KEY (criado_por) REFERENCES usuarios(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.3 Tabela de categorias
+        // 3.1.3 CATEGORIES TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS categorias (
             id INT AUTO_INCREMENT PRIMARY KEY,
             projeto_id INT NOT NULL,
@@ -91,14 +112,14 @@ function create_database_tables($pdo) {
             UNIQUE KEY (projeto_id, numero_conta)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.4 Tabela de fornecedores
+        // 3.1.4 SUPPLIERS TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS fornecedores (
             id INT AUTO_INCREMENT PRIMARY KEY,
             nome VARCHAR(255) NOT NULL UNIQUE,
             data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.5 Tabela de despesas
+        // 3.1.5 EXPENSES TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS despesas (
             id INT AUTO_INCREMENT PRIMARY KEY,
             projeto_id INT NOT NULL,
@@ -112,13 +133,15 @@ function create_database_tables($pdo) {
             anexo_path VARCHAR(255),
             registrado_por INT NOT NULL,
             ultima_atualizacao TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+            ip_address VARCHAR(45),
+            user_agent VARCHAR(255),
             FOREIGN KEY (projeto_id) REFERENCES projetos(id),
             FOREIGN KEY (categoria_id) REFERENCES categorias(id),
             FOREIGN KEY (fornecedor_id) REFERENCES fornecedores(id),
             FOREIGN KEY (registrado_por) REFERENCES usuarios(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.6 Tabela de histórico de alterações de orçamento
+        // 3.1.6 BUDGET HISTORY TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS historico_budget (
             id INT AUTO_INCREMENT PRIMARY KEY,
             categoria_id INT NOT NULL,
@@ -131,7 +154,7 @@ function create_database_tables($pdo) {
             FOREIGN KEY (alterado_por) REFERENCES usuarios(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.7 Tabela de histórico de exclusões
+        // 3.1.7 DELETION HISTORY TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS historico_exclusoes (
             id INT AUTO_INCREMENT PRIMARY KEY,
             tipo_registro ENUM('despesa', 'categoria') NOT NULL,
@@ -150,7 +173,7 @@ function create_database_tables($pdo) {
             FOREIGN KEY (excluido_por) REFERENCES usuarios(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        // 4.8 Tabela de histórico de edições
+        // 3.1.8 EDIT HISTORY TABLE
         $pdo->exec("CREATE TABLE IF NOT EXISTS historico_edicoes (
             id INT AUTO_INCREMENT PRIMARY KEY,
             tipo_registro ENUM('despesa', 'categoria') NOT NULL,
@@ -170,8 +193,22 @@ function create_database_tables($pdo) {
             data_despesa_nova DATE,
             editado_por INT NOT NULL,
             data_edicao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(45),
             FOREIGN KEY (projeto_id) REFERENCES projetos(id),
             FOREIGN KEY (editado_por) REFERENCES usuarios(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        // 3.1.9 AUDIT LOG TABLE
+        $pdo->exec("CREATE TABLE IF NOT EXISTS expense_audit_log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            expense_id INT NOT NULL,
+            action VARCHAR(20) NOT NULL,
+            action_by INT NOT NULL,
+            action_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(45),
+            user_agent VARCHAR(255),
+            FOREIGN KEY (expense_id) REFERENCES despesas(id),
+            FOREIGN KEY (action_by) REFERENCES usuarios(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
         return true;
@@ -180,7 +217,12 @@ function create_database_tables($pdo) {
     }
 }
 
-// 5. Função para criar diretórios necessários
+// 4.0 FILE SYSTEM OPERATIONS
+
+/**
+ * 4.1 CREATE REQUIRED DIRECTORIES
+ * @return array List of errors encountered
+ */
 function create_directories() {
     $directories = [
         'assets/arquivos',
@@ -192,63 +234,94 @@ function create_directories() {
     $errors = [];
     foreach ($directories as $dir) {
         if (!file_exists($dir) && !mkdir($dir, 0755, true)) {
-            $errors[] = "Não foi possível criar o diretório: $dir";
+            $errors[] = "Failed to create directory: $dir";
         }
     }
     
     return $errors;
 }
 
-// 6. Função para gerar o arquivo de configuração
+/**
+ * 4.2 GENERATE CONFIGURATION FILE
+ * @param string $host Database host
+ * @param string $db_name Database name
+ * @param string $username Database username
+ * @param string $password Database password
+ * @param string $system_name Application name
+ * @return bool True on success
+ */
 function generate_config_file($host, $db_name, $username, $password, $system_name) {
     $config_content = "<?php
+// 1.0 DATABASE CONFIGURATION
 \$host = '$host';
 \$db_name = '$db_name';
 \$username = '$username';
 \$password = '$password';
-\$base_url = '$base_url';
 \$system_name = '$system_name';
 
+// 2.0 SECURITY SETTINGS
+define('CSRF_TOKEN_LIFETIME', 3600); // 1 hour
+define('PASSWORD_RESET_TIMEOUT', 86400); // 24 hours
+define('MAX_LOGIN_ATTEMPTS', 5);
+define('LOGIN_LOCKOUT_TIME', 1800); // 30 minutes
+
+// 3.0 APPLICATION SETTINGS
+date_default_timezone_set('Europe/Lisbon');
+
+// 4.0 DATABASE CONNECTION
 try {
-    \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db_name;charset=utf8\", \$username, \$password);
-    \$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    \$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db_name;charset=utf8mb4\", \$username, \$password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_PERSISTENT => false,
+        PDO::MYSQL_ATTR_INIT_COMMAND => \"SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci\"
+    ]);
 } catch(PDOException \$e) {
-    die(\"Erro de conexão: \" . \$e->getMessage());
+    error_log('Database connection failed: ' . \$e->getMessage());
+    die('System temporarily unavailable. Please try again later.');
 }
 ?>";
 
     return file_put_contents('config/db.php', $config_content) !== false;
 }
 
-// 7. Função para validar o upload do logo
+// 5.0 IMAGE HANDLING FUNCTIONS
+
+/**
+ * 5.1 VALIDATE LOGO UPLOAD
+ * @return bool|string True if valid, error message if invalid
+ */
 function validate_logo_upload() {
     if (!isset($_FILES['logo']) || $_FILES['logo']['error'] == UPLOAD_ERR_NO_FILE) {
-        return true; // Logo é opcional
+        return true; // Logo is optional
     }
     
     $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
     $max_size = 1024 * 1024; // 1MB
     
     if ($_FILES['logo']['error'] !== UPLOAD_ERR_OK) {
-        return "Erro no upload do logo: " . $_FILES['logo']['error'];
+        return "Upload error: " . $_FILES['logo']['error'];
     }
     
     if (!in_array($_FILES['logo']['type'], $allowed_types)) {
-        return "Tipo de arquivo não permitido. Por favor, envie um JPEG, PNG ou GIF.";
+        return "Invalid file type. Please upload JPEG, PNG or GIF.";
     }
     
     if ($_FILES['logo']['size'] > $max_size) {
-        return "O tamanho do logo deve ser menor que 1MB.";
+        return "Logo size must be less than 1MB.";
     }
     
     return true;
 }
 
-// 8. Função para processar o upload do logo
+/**
+ * 5.2 PROCESS LOGO UPLOAD
+ * @return string Path to uploaded logo
+ */
 function process_logo_upload() {
     if (!isset($_FILES['logo']) || $_FILES['logo']['error'] == UPLOAD_ERR_NO_FILE) {
-        return 'logo_p.png'; // Logo padrão
+        return 'logo_p.png'; // Default logo
     }
     
     $upload_dir = 'assets/img/';
@@ -256,7 +329,7 @@ function process_logo_upload() {
     $file_name = 'logo.' . $file_ext;
     $target_file = $upload_dir . $file_name;
     
-    // Redimensionar a imagem para garantir que não seja muito grande
+    // Resize image if needed
     list($width, $height) = getimagesize($_FILES['logo']['tmp_name']);
     $max_width = 200;
     $max_height = 80;
@@ -282,7 +355,7 @@ function process_logo_upload() {
         
         $dst = imagecreatetruecolor($new_width, $new_height);
         
-        // Preservar transparência para PNG e GIF
+        // Preserve transparency for PNG and GIF
         if ($_FILES['logo']['type'] == 'image/png' || $_FILES['logo']['type'] == 'image/gif') {
             imagecolortransparent($dst, imagecolorallocatealpha($dst, 0, 0, 0, 127));
             imagealphablending($dst, false);
@@ -313,10 +386,18 @@ function process_logo_upload() {
     return $file_name;
 }
 
-// 9. Função para testar a conexão com o banco de dados
+// 6.0 DATABASE CONNECTION FUNCTIONS
+
+/**
+ * 6.1 TEST DATABASE CONNECTION
+ * @param string $host Database host
+ * @param string $db_name Database name
+ * @param string $username Database username
+ * @param string $password Database password
+ * @return array Connection result with status and PDO object
+ */
 function test_database_connection($host, $db_name, $username, $password) {
     try {
-        // Tentar diferentes métodos de conexão
         $connection_methods = [
             "mysql:host=$host",
             "mysql:host=127.0.0.1",
@@ -328,7 +409,6 @@ function test_database_connection($host, $db_name, $username, $password) {
         
         foreach ($connection_methods as $dsn_prefix) {
             try {
-                // Conectar sem especificar o banco
                 $pdo = new PDO("$dsn_prefix", $username, $password);
                 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 $connected = true;
@@ -343,11 +423,9 @@ function test_database_connection($host, $db_name, $username, $password) {
             throw $last_error;
         }
         
-        // Tentar criar o banco de dados
         $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         
-        // Conectar ao banco criado
-        $pdo = new PDO("$dsn_prefix;dbname=$db_name;charset=utf8", $username, $password);
+        $pdo = new PDO("$dsn_prefix;dbname=$db_name;charset=utf8mb4", $username, $password);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
         return ['success' => true, 'pdo' => $pdo, 'connection_method' => $dsn_prefix];
@@ -356,12 +434,22 @@ function test_database_connection($host, $db_name, $username, $password) {
     }
 }
 
-// 10. Função para criar o primeiro usuário administrador
+// 7.0 USER MANAGEMENT FUNCTIONS
+
+/**
+ * 7.1 CREATE ADMIN USER
+ * @param PDO $pdo Database connection
+ * @param string $email Admin email
+ * @param string $password Admin password
+ * @return bool|string True on success, error message on failure
+ */
 function create_admin_user($pdo, $email, $password) {
     try {
-        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        $hashed_password = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
         
-        $stmt = $pdo->prepare("INSERT INTO usuarios (email, senha, tipo_conta) VALUES (:email, :senha, 'admin')");
+        $stmt = $pdo->prepare("INSERT INTO usuarios 
+                              (email, senha, tipo_conta, ativo, data_registo) 
+                              VALUES (:email, :senha, 'admin', 1, NOW())");
         $stmt->bindParam(':email', $email);
         $stmt->bindParam(':senha', $hashed_password);
         $stmt->execute();
@@ -372,7 +460,12 @@ function create_admin_user($pdo, $email, $password) {
     }
 }
 
-// 11. Função para processar o formulário do Step 2
+// 8.0 INSTALLATION STEP PROCESSING
+
+/**
+ * 8.1 PROCESS STEP 2 (DATABASE CONFIGURATION)
+ * @return array Result with success status and message
+ */
 function process_step2() {
     global $debug_info;
     
@@ -381,49 +474,49 @@ function process_step2() {
     $db_user = $_POST['db_user'] ?? '';
     $db_pass = $_POST['db_pass'] ?? '';
     
-    // Depuração
     error_log("process_step2: Host=$db_host, DB=$db_name, User=$db_user");
     
     if (empty($db_host) || empty($db_name) || empty($db_user)) {
-        return ['success' => false, 'message' => 'Todos os campos do banco de dados são obrigatórios, exceto a senha se o usuário não tiver senha.'];
+        return ['success' => false, 'message' => 'All database fields are required except password if user has none.'];
     }
     
-    // Armazenar valores na sessão antes de testar conexão
     $_SESSION['db_host'] = $db_host;
     $_SESSION['db_name'] = $db_name;
     $_SESSION['db_user'] = $db_user;
     $_SESSION['db_pass'] = $db_pass;
     
-    // Testar conexão
     $connection = test_database_connection($db_host, $db_name, $db_user, $db_pass);
     if (!$connection['success']) {
-        return ['success' => false, 'message' => 'Erro ao conectar ao banco de dados: ' . $connection['message']];
+        return ['success' => false, 'message' => 'Database connection error: ' . $connection['message']];
     }
     
     return ['success' => true];
 }
 
-// 12. Função para processar o formulário do Step 3
+/**
+ * 8.2 PROCESS STEP 3 (SYSTEM CONFIGURATION)
+ * @return array Result with success status and message
+ */
 function process_step3() {
     $admin_email = $_POST['admin_email'] ?? '';
     $admin_password = $_POST['admin_password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
-    $system_name = $_POST['system_name'] ?? 'Gestão de Eventos';
+    $system_name = $_POST['system_name'] ?? 'Budget Control';
     
     if (empty($admin_email) || empty($admin_password) || empty($confirm_password)) {
-        return ['success' => false, 'message' => 'Todos os campos são obrigatórios.'];
+        return ['success' => false, 'message' => 'All fields are required.'];
     }
     
     if (!filter_var($admin_email, FILTER_VALIDATE_EMAIL)) {
-        return ['success' => false, 'message' => 'E-mail de administrador inválido.'];
+        return ['success' => false, 'message' => 'Invalid admin email.'];
     }
     
     if ($admin_password !== $confirm_password) {
-        return ['success' => false, 'message' => 'As senhas não correspondem.'];
+        return ['success' => false, 'message' => 'Passwords do not match.'];
     }
     
-    if (strlen($admin_password) < 6) {
-        return ['success' => false, 'message' => 'A senha deve ter pelo menos 6 caracteres.'];
+    if (strlen($admin_password) < 8) {
+        return ['success' => false, 'message' => 'Password must be at least 8 characters.'];
     }
     
     $logo_validation = validate_logo_upload();
@@ -438,68 +531,55 @@ function process_step3() {
     return ['success' => true];
 }
 
-// 13. Função para finalizar a instalação
+/**
+ * 8.3 FINALIZE INSTALLATION
+ * @return array Result with success status and message
+ */
 function finalize_installation() {
     try {
-	    // Depuração
-	           error_log("Finalizando instalação: Host=" . ($_SESSION['db_host'] ?? 'VAZIO') . 
-	                     ", DB=" . ($_SESSION['db_name'] ?? 'VAZIO') . 
-	                     ", User=" . ($_SESSION['db_user'] ?? 'VAZIO'));
+        error_log("Finalizing installation: Host=" . ($_SESSION['db_host'] ?? 'EMPTY') . 
+                 ", DB=" . ($_SESSION['db_name'] ?? 'EMPTY') . 
+                 ", User=" . ($_SESSION['db_user'] ?? 'EMPTY'));
         
-	           // Tentar diferentes métodos de conexão
-	           $connection_host = ($_SESSION['db_host'] === 'localhost') ? '127.0.0.1' : $_SESSION['db_host'];
-	           $db_user = $_SESSION['db_user'];
-	           $db_pass = $_SESSION['db_pass'] ?? '';
-        
-	           try {
-	               $pdo = new PDO("mysql:host=$connection_host;dbname={$_SESSION['db_name']}", $db_user, $db_pass);
-	           } catch (PDOException $e) {
-	               error_log("Erro na primeira tentativa: " . $e->getMessage());
-	               // Tentar sem especificar o banco de dados primeiro
-	               $pdo = new PDO("mysql:host=$connection_host", $db_user, $db_pass);
-	               // Criar o banco de dados
-	               $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$_SESSION['db_name']}` 
-	                          DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-	               // Conectar ao banco de dados criado
-	               $pdo = new PDO("mysql:host=$connection_host;dbname={$_SESSION['db_name']}", 
-	                             $db_user, $db_pass);
-	           }
-        
-	           $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-		// Tentar diferentes métodos de conexão
         $connection_host = ($_SESSION['db_host'] === 'localhost') ? '127.0.0.1' : $_SESSION['db_host'];
+        $db_user = $_SESSION['db_user'];
+        $db_pass = $_SESSION['db_pass'] ?? '';
         
         try {
-            $pdo = new PDO("mysql:host={$connection_host};dbname={$_SESSION['db_name']}", $_SESSION['db_user'], $_SESSION['db_pass']);
+            $pdo = new PDO("mysql:host=$connection_host;dbname={$_SESSION['db_name']};charset=utf8mb4", 
+                          $db_user, $db_pass, [
+                              PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                              PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                              PDO::ATTR_EMULATE_PREPARES => false
+                          ]);
         } catch (PDOException $e) {
-            // Tentar socket alternativo se falhar
-            $pdo = new PDO("mysql:unix_socket=/var/run/mysqld/mysqld.sock;dbname={$_SESSION['db_name']}", $_SESSION['db_user'], $_SESSION['db_pass']);
+            error_log("First attempt failed: " . $e->getMessage());
+            $pdo = new PDO("mysql:host=$connection_host", $db_user, $db_pass);
+            $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$_SESSION['db_name']}` 
+                       DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $pdo = new PDO("mysql:host=$connection_host;dbname={$_SESSION['db_name']};charset=utf8mb4", 
+                          $db_user, $db_pass);
         }
         
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        // Criar tabelas
         $tables_result = create_database_tables($pdo);
         if ($tables_result !== true) {
-            return ['success' => false, 'message' => 'Erro ao criar tabelas: ' . $tables_result];
+            return ['success' => false, 'message' => 'Table creation error: ' . $tables_result];
         }
         
-        // Criar diretórios
         $dir_errors = create_directories();
         if (!empty($dir_errors)) {
             return ['success' => false, 'message' => implode('<br>', $dir_errors)];
         }
         
-        // Processar upload do logo
         $logo_path = process_logo_upload();
         
-        // Criar usuário administrador
         $admin_result = create_admin_user($pdo, $_SESSION['admin_email'], $_SESSION['admin_password']);
         if ($admin_result !== true) {
-            return ['success' => false, 'message' => 'Erro ao criar usuário administrador: ' . $admin_result];
+            return ['success' => false, 'message' => 'Admin creation error: ' . $admin_result];
         }
         
-        // Gerar arquivo de configuração
         $config_result = generate_config_file(
             $_SESSION['db_host'],
             $_SESSION['db_name'],
@@ -509,492 +589,770 @@ function finalize_installation() {
         );
         
         if (!$config_result) {
-            return ['success' => false, 'message' => 'Erro ao gerar arquivo de configuração.'];
+            return ['success' => false, 'message' => 'Config file generation failed.'];
         }
         
-        // Criar arquivo .htaccess para proteger a instalação de ser executada novamente
         file_put_contents('install_lock', 'Installation completed on ' . date('Y-m-d H:i:s'));
         
         return ['success' => true];
     } catch (Exception $e) {
-        return ['success' => false, 'message' => 'Erro durante a instalação: ' . $e->getMessage()];
+        return ['success' => false, 'message' => 'Installation error: ' . $e->getMessage()];
     }
 }
 
-// 14. Verificar se a instalação já foi concluída
+// 9.0 INSTALLATION LOCK CHECK
 if (file_exists('install_lock') && !isset($_GET['force'])) {
-    $lock_message = "A instalação já foi concluída. Se deseja reinstalar, delete o arquivo 'install_lock' ou acesse com o parâmetro 'force'.";
+    $lock_message = "Installation already completed. To reinstall, delete 'install_lock' file or use 'force' parameter.";
 } else {
-    // 15. Processar formulários
+
+    // 10.0 PROCESS FORM SUBMISSIONS
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         switch ($step) {
             case 2:
+                // 10.1 PROCESS DATABASE CONFIGURATION STEP
                 $result = process_step2();
                 if ($result['success']) {
                     $step = 3;
+                    // 10.1.1 CLEAR ANY PREVIOUS ERRORS
+                    $errors = [];
                 } else {
+                    // 10.1.2 STORE ERROR MESSAGE
                     $errors[] = $result['message'];
+                    // 10.1.3 LOG FAILED ATTEMPT
+                    error_log("Database configuration failed: " . $result['message']);
                 }
                 break;
                 
             case 3:
+                // 10.2 PROCESS SYSTEM CONFIGURATION STEP
                 $result = process_step3();
                 if ($result['success']) {
                     $step = 4;
+                    // 10.2.1 CLEAR ANY PREVIOUS ERRORS
+                    $errors = [];
                 } else {
+                    // 10.2.2 STORE ERROR MESSAGE
                     $errors[] = $result['message'];
+                    // 10.2.3 LOG FAILED ATTEMPT
+                    error_log("System configuration failed: " . $result['message']);
                 }
                 break;
                 
             case 4:
+                // 10.3 PROCESS FINAL INSTALLATION STEP
                 $result = finalize_installation();
                 if ($result['success']) {
                     $step = 5;
+                    // 10.3.1 CLEAR SESSION DATA
+                    session_unset();
+                    // 10.3.2 LOG SUCCESSFUL INSTALLATION
+                    error_log("Installation completed successfully for system: " . $_SESSION['system_name']);
                 } else {
+                    // 10.3.3 STORE ERROR MESSAGE
                     $errors[] = $result['message'];
-                    $step = 4;
+                    // 10.3.4 LOG FAILED INSTALLATION
+                    error_log("Installation failed: " . $result['message']);
                 }
                 break;
         }
     }
-}
-?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Instalação - Sistema de Gestão de Despesas</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        body {
-            background-color: #f5f5f7;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            padding-top: 20px;
-        }
-        .container {
-            max-width: 800px;
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 40px;
-        }
-        .step-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .step-indicator {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 40px;
-            position: relative;
-        }
-        .step-indicator::before {
-            content: '';
-            position: absolute;
-            top: 14px;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background-color: #e9ecef;
-            z-index: 1;
-        }
-        .step {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            background-color: #e9ecef;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            position: relative;
-            z-index: 2;
-        }
-        .step.active {
-            background-color: #2062b7;
-            color: #fff;
-        }
-        .step.completed {
-            background-color: #28a745;
-            color: #fff;
-        }
-        .step-content {
-            margin-bottom: 30px;
-        }
-        .form-group label {
-            font-weight: bold;
-        }
-        .requirement-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #f2f2f2;
-        }
-        .requirement-status {
-            font-weight: bold;
-        }
-        .status-ok {
-            color: #28a745;
-        }
-        .status-error {
-            color: #dc3545;
-        }
-        .error-list {
-            background-color: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-        .instructions {
-            background-color: #f0f7ff;
-            padding: 15px;
-            border-left: 4px solid #2062b7;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-        .logo-preview {
-            max-width: 300px;
-            max-height: 120px;
-            margin-top: 10px;
-            display: none;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .step-buttons {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 30px;
-        }
-        .success-message {
-            text-align: center;
-            margin: 40px 0;
-        }
-        .success-icon {
-            font-size: 64px;
-            color: #28a745;
-            margin-bottom: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="step-header">
-            <h1>Instalação do Sistema de Gestão de Despesas</h1>
-            <p>Siga os passos para configurar sua instalação</p>
-        </div>
+
+    // 11.0 INSTALLATION INTERFACE
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <!-- 11.1 PAGE METADATA -->
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Installation - Budget Control System</title>
         
-        <?php if (isset($lock_message)): ?>
-            <div class="alert alert-warning">
-                <?php echo $lock_message; ?>
-                <p>
-                    <a href="index.php" class="btn btn-primary mt-3">Ir para a página inicial</a>
-                </p>
-            </div>
-        <?php else: ?>
-            <div class="step-indicator">
-                <div class="step <?php echo $step >= 1 ? 'active' : ''; ?> <?php echo $step > 1 ? 'completed' : ''; ?>">1</div>
-                <div class="step <?php echo $step >= 2 ? 'active' : ''; ?> <?php echo $step > 2 ? 'completed' : ''; ?>">2</div>
-                <div class="step <?php echo $step >= 3 ? 'active' : ''; ?> <?php echo $step > 3 ? 'completed' : ''; ?>">3</div>
-                <div class="step <?php echo $step >= 4 ? 'active' : ''; ?> <?php echo $step > 4 ? 'completed' : ''; ?>">4</div>
-                <div class="step <?php echo $step >= 5 ? 'active' : ''; ?>">5</div>
+        <!-- 11.2 SECURITY META TAGS -->
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://stackpath.bootstrapcdn.com; img-src 'self' data:;">
+        <meta http-equiv="X-Content-Type-Options" content="nosniff">
+        <meta http-equiv="X-Frame-Options" content="DENY">
+        
+        <!-- 11.3 CSS INCLUDES -->
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" 
+              integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" 
+              crossorigin="anonymous">
+        
+        <!-- 11.4 INLINE STYLES -->
+        <style>
+            /* 11.4.1 BASE STYLES */
+            body {
+                background-color: #f5f5f7;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                padding-top: 20px;
+            }
+            
+            /* 11.4.2 CONTAINER STYLES */
+            .container {
+                max-width: 800px;
+                background-color: #fff;
+                border-radius: 10px;
+                padding: 30px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-bottom: 40px;
+            }
+            
+            /* 11.4.3 STEP INDICATOR STYLES */
+            .step-indicator {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 40px;
+                position: relative;
+            }
+            
+            .step-indicator::before {
+                content: '';
+                position: absolute;
+                top: 14px;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background-color: #e9ecef;
+                z-index: 1;
+            }
+            
+            .step {
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                background-color: #e9ecef;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                position: relative;
+                z-index: 2;
+            }
+            
+            .step.active {
+                background-color: #2062b7;
+                color: #fff;
+            }
+            
+            .step.completed {
+                background-color: #28a745;
+                color: #fff;
+            }
+            
+            /* 11.4.4 FORM STYLES */
+            .form-group label {
+                font-weight: bold;
+            }
+            
+            /* 11.4.5 REQUIREMENT LIST STYLES */
+            .requirement-item {
+                display: flex;
+                justify-content: space-between;
+                padding: 8px 0;
+                border-bottom: 1px solid #f2f2f2;
+            }
+            
+            .requirement-status {
+                font-weight: bold;
+            }
+            
+            .status-ok {
+                color: #28a745;
+            }
+            
+            .status-error {
+                color: #dc3545;
+            }
+            
+            /* 11.4.6 ERROR MESSAGE STYLES */
+            .error-list {
+                background-color: #f8d7da;
+                color: #721c24;
+                padding: 15px;
+                border-radius: 4px;
+                margin-bottom: 20px;
+            }
+            
+            /* 11.4.7 INSTRUCTION BOX STYLES */
+            .instructions {
+                background-color: #f0f7ff;
+                padding: 15px;
+                border-left: 4px solid #2062b7;
+                border-radius: 4px;
+                margin-bottom: 20px;
+            }
+            
+            /* 11.4.8 LOGO PREVIEW STYLES */
+            .logo-preview {
+                max-width: 300px;
+                max-height: 120px;
+                margin-top: 10px;
+                display: none;
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+            
+            /* 11.4.9 BUTTON STYLES */
+            .step-buttons {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 30px;
+            }
+            
+            /* 11.4.10 SUCCESS MESSAGE STYLES */
+            .success-message {
+                text-align: center;
+                margin: 40px 0;
+            }
+            
+            .success-icon {
+                font-size: 64px;
+                color: #28a745;
+                margin-bottom: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- 12.0 MAIN CONTAINER -->
+        <div class="container">
+            <!-- 12.1 HEADER SECTION -->
+            <div class="step-header">
+                <h1>Budget Control System Installation</h1>
+                <p>Follow the steps to configure your installation</p>
             </div>
             
-            <?php if (!empty($errors)): ?>
-                <div class="error-list">
-                    <strong>Erros encontrados:</strong>
-                    <ul>
-                        <?php foreach ($errors as $error): ?>
-                            <li><?php echo $error; ?></li>
-                        <?php endforeach; ?>
-                    </ul>
+            <?php if (isset($lock_message)): ?>
+                <!-- 12.2 INSTALLATION LOCK MESSAGE -->
+                <div class="alert alert-warning">
+                    <?php echo htmlspecialchars($lock_message, ENT_QUOTES, 'UTF-8'); ?>
+                    <p>
+                        <a href="index.php" class="btn btn-primary mt-3">Go to Home Page</a>
+                    </p>
                 </div>
-            <?php endif; ?>
-            
-            <div class="step-content">
-                <?php if ($step == 1): ?>
-                    <!-- Passo 1: Verificação de requisitos -->
-                    <h2>Passo 1: Verificação de Requisitos</h2>
-                    <div class="instructions">
-                        <p>O sistema verificará os requisitos necessários para a instalação. Certifique-se de que todos os requisitos estão satisfeitos antes de prosseguir.</p>
-                    </div>
-                    
-                    <h4>Requisitos do Sistema</h4>
-                    
-					<div class="card mb-4">
-					    <div class="card-header">
-					        <h5>Informações do Banco de Dados</h5>
-					    </div>
-					    <div class="card-body">
-					        <p><strong>Host:</strong> <?php echo $_SESSION['db_host'] ?? 'Não definido'; ?></p>
-					        <p><strong>Nome do Banco:</strong> <?php echo $_SESSION['db_name'] ?? 'Não definido'; ?></p>
-					        <p><strong>Usuário:</strong> <?php echo $_SESSION['db_user'] ?? 'Não definido'; ?></p>
-					        <p><strong>Estado da Sessão:</strong> <?php echo session_status() === PHP_SESSION_ACTIVE ? 'Ativa' : 'Inativa'; ?></p>
-					    </div>
-					</div>
-					
-					<div class="card mb-4">
-                        <div class="card-body">
-                            <div class="requirement-item">
-                                <span>Versão do PHP (>= <?php echo $requirements['php']; ?>)</span>
-                                <?php $php_check = check_php_version($requirements['php']); ?>
-                                <span class="requirement-status <?php echo $php_check ? 'status-ok' : 'status-error'; ?>">
-                                    <?php echo $php_check ? 'OK ('.PHP_VERSION.')' : 'Erro (Versão atual: '.PHP_VERSION.')'; ?>
-                                </span>
-                            </div>
-                            
-                            <?php foreach ($requirements['extensions'] as $extension): ?>
-                                <div class="requirement-item">
-                                    <span>Extensão PHP: <?php echo $extension; ?></span>
-                                    <?php $ext_check = check_extension($extension); ?>
-                                    <span class="requirement-status <?php echo $ext_check ? 'status-ok' : 'status-error'; ?>">
-                                        <?php echo $ext_check ? 'OK' : 'Não instalada'; ?>
-                                    </span>
-                                </div>
+            <?php else: ?>
+                <!-- 12.3 STEP INDICATOR -->
+                <div class="step-indicator">
+                    <div class="step <?php echo $step >= 1 ? 'active' : ''; ?> <?php echo $step > 1 ? 'completed' : ''; ?>">1</div>
+                    <div class="step <?php echo $step >= 2 ? 'active' : ''; ?> <?php echo $step > 2 ? 'completed' : ''; ?>">2</div>
+                    <div class="step <?php echo $step >= 3 ? 'active' : ''; ?> <?php echo $step > 3 ? 'completed' : ''; ?>">3</div>
+                    <div class="step <?php echo $step >= 4 ? 'active' : ''; ?> <?php echo $step > 4 ? 'completed' : ''; ?>">4</div>
+                    <div class="step <?php echo $step >= 5 ? 'active' : ''; ?>">5</div>
+                </div>
+                
+                <?php if (!empty($errors)): ?>
+                    <!-- 12.4 ERROR DISPLAY -->
+                    <div class="error-list">
+                        <strong>Errors found:</strong>
+                        <ul>
+                            <?php foreach ($errors as $error): ?>
+                                <li><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></li>
                             <?php endforeach; ?>
-                            
-                            <div class="requirement-item">
-                                <span>Permissão de escrita no diretório atual</span>
-                                <?php $write_check = is_writable('.'); ?>
-                                <span class="requirement-status <?php echo $write_check ? 'status-ok' : 'status-error'; ?>">
-                                    <?php echo $write_check ? 'OK' : 'Sem permissão'; ?>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="step-buttons">
-                        <?php
-                        // Verificar se todos os requisitos foram atendidos
-                        $all_requirements_met = 
-                            check_php_version($requirements['php']) && 
-                            array_reduce($requirements['extensions'], function($carry, $extension) {
-                                return $carry && check_extension($extension);
-                            }, true) &&
-                            is_writable('.');
-                        ?>
-                        
-                        <?php if ($all_requirements_met): ?>
-                            <a href="?step=2" class="btn btn-primary">Próximo Passo</a>
-                        <?php else: ?>
-                            <div class="alert alert-danger">
-                                Por favor, resolva os requisitos não atendidos antes de continuar.
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                    
-                <?php elseif ($step == 2): ?>
-                    <!-- Passo 2: Configuração do Banco de Dados -->
-                    <h2>Passo 2: Configuração do Banco de Dados</h2>
-                    <div class="instructions">
-                        <p>Forneça as informações de conexão com o banco de dados MySQL. O banco de dados será criado automaticamente se não existir.</p>
-                    </div>
-                    
-                    <form method="post" action="?step=2">
-                        <div class="form-group">
-                            <label for="db_host">Host do Banco de Dados:</label>
-                            <input type="text" class="form-control" id="db_host" name="db_host" value="<?php echo $_SESSION['db_host'] ?? 'localhost'; ?>" required>
-                            <small class="form-text text-muted">Geralmente "localhost" ou endereço IP do servidor de banco de dados.</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="db_name">Nome do Banco de Dados:</label>
-                            <input type="text" class="form-control" id="db_name" name="db_name" value="<?php echo $_SESSION['db_name'] ?? 'gestao_eventos'; ?>" required>
-                            <small class="form-text text-muted">O banco de dados será criado automaticamente se não existir.</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="db_user">Usuário do Banco de Dados:</label>
-                            <input type="text" class="form-control" id="db_user" name="db_user" value="<?php echo $_SESSION['db_user'] ?? 'root'; ?>" required>
-                            <small class="form-text text-muted">Usuário com permissão para criar e modificar bancos de dados.</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="db_pass">Senha do Banco de Dados:</label>
-                            <input type="password" class="form-control" id="db_pass" name="db_pass" value="<?php echo $_SESSION['db_pass'] ?? ''; ?>">
-                            <small class="form-text text-muted">Deixe em branco se não houver senha.</small>
-                        </div>
-                        
-                        <div class="step-buttons">
-                            <a href="?step=1" class="btn btn-secondary">Voltar</a>
-                            <button type="submit" class="btn btn-primary">Próximo Passo</button>
-                        </div>
-                    </form>
-                    
-                <?php elseif ($step == 3): ?>
-                    <!-- Passo 3: Configuração do Sistema -->
-                    <h2>Passo 3: Configuração do Sistema</h2>
-                    <div class="instructions">
-                        <p>Configure as informações básicas do sistema e do administrador.</p>
-                    </div>
-                    
-                    <form method="post" action="?step=3" enctype="multipart/form-data">
-                        <div class="form-group">
-                            <label for="admin_email">E-mail do Administrador:</label>
-                            <input type="email" class="form-control" id="admin_email" name="admin_email" value="<?php echo $_SESSION['admin_email'] ?? ''; ?>" required>
-                            <small class="form-text text-muted">Este e-mail será usado para o primeiro login como administrador.</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="admin_password">Senha do Administrador:</label>
-                            <input type="password" class="form-control" id="admin_password" name="admin_password" required>
-                            <small class="form-text text-muted">Mínimo de 6 caracteres.</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="confirm_password">Confirmar Senha:</label>
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="system_name">Nome do Sistema:</label>
-                            <input type="text" class="form-control" id="system_name" name="system_name" value="<?php echo $_SESSION['system_name'] ?? 'Gestão de Eventos'; ?>" required>
-                            <small class="form-text text-muted">Nome que aparecerá no cabeçalho e título das páginas.</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="logo">Logo do Sistema (opcional):</label>
-                            <input type="file" class="form-control-file" id="logo" name="logo" accept="image/jpeg,image/png,image/gif">
-                            <small class="form-text text-muted">Tamanho máximo: 1MB. Formatos: JPEG, PNG, GIF. A imagem será redimensionada se necessário.</small>
-                            <img id="logo-preview" class="logo-preview" alt="Preview do logo">
-                        </div>
-                        
-                        <div class="step-buttons">
-                            <a href="?step=2" class="btn btn-secondary">Voltar</a>
-                            <button type="submit" class="btn btn-primary">Próximo Passo</button>
-                        </div>
-                    </form>
-                    
-				<?php elseif ($step == 4): ?>
-				    <!-- Passo 4: Confirmação e Instalação -->
-				    <h2>Passo 4: Confirmação e Instalação</h2>
-				    <div class="instructions">
-				        <p>Revise as informações abaixo e clique em "Concluir Instalação" para finalizar o processo.</p>
-				    </div>
-    
-				    <div class="card mb-4">
-				        <div class="card-header">
-				            <h5>Informações do Banco de Dados</h5>
-				        </div>
-				        <div class="card-body">
-				            <p><strong>Host:</strong> <?php echo isset($_SESSION['db_host']) ? htmlspecialchars($_SESSION['db_host']) : 'Não definido'; ?></p>
-				            <p><strong>Nome do Banco:</strong> <?php echo isset($_SESSION['db_name']) ? htmlspecialchars($_SESSION['db_name']) : 'Não definido'; ?></p>
-				            <p><strong>Usuário:</strong> <?php echo isset($_SESSION['db_user']) ? htmlspecialchars($_SESSION['db_user']) : 'Não definido'; ?></p>
-				        </div>
-				    </div>
-    
-				    <div class="card mb-4">
-				        <div class="card-header">
-				            <h5>Informações do Sistema</h5>
-				        </div>
-				        <div class="card-body">
-				            <p><strong>Nome do Sistema:</strong> <?php echo htmlspecialchars($_SESSION['system_name'] ?? 'Não definido'); ?></p>
-				            <p><strong>E-mail do Administrador:</strong> <?php echo htmlspecialchars($_SESSION['admin_email'] ?? 'Não definido'); ?></p>
-				            <p><strong>Logo:</strong> <?php echo isset($_FILES['logo']) && $_FILES['logo']['error'] == 0 ? 'Personalizado' : 'Padrão'; ?></p>
-				        </div>
-				    </div>
-    
-				    <form method="post" action="?step=4">
-				        <div class="alert alert-warning">
-				            <p><strong>Atenção:</strong> Ao concluir a instalação, serão criados:</p>
-				            <ul>
-				                <li>O banco de dados e suas tabelas</li>
-				                <li>Arquivos de configuração</li>
-				                <li>Diretórios para armazenar arquivos enviados</li>
-				            </ul>
-				            <p>Certifique-se de que todas as informações estão corretas.</p>
-				        </div>
-        
-				        <div class="step-buttons">
-				            <a href="?step=3" class="btn btn-secondary">Voltar</a>
-				            <button type="submit" class="btn btn-success">Concluir Instalação</button>
-				        </div>
-				    </form>
-                    
-                <?php elseif ($step == 5): ?>
-                    <!-- Passo 5: Instalação Concluída -->
-                    <div class="success-message">
-                        <div class="success-icon">✓</div>
-                        <h2>Instalação Concluída com Sucesso!</h2>
-                        <p>O sistema de Gestão de Despesas foi instalado corretamente.</p>
-                        <p>Você pode agora acessar o sistema e começar a utilizá-lo.</p>
-                        
-                        <div class="alert alert-info mt-4">
-                            <p><strong>Informações de Acesso:</strong></p>
-                            <p>E-mail: <?php echo $_SESSION['admin_email']; ?></p>
-                            <p>Senha: A senha que você definiu durante a instalação</p>
-                        </div>
-                        
-                        <div class="mt-4">
-                            <p><strong>Por segurança, o instalador será desativado automaticamente.</strong></p>
-                            <p>Se precisar reinstalar, exclua o arquivo "install_lock" na raiz do diretório.</p>
-                        </div>
-                        
-                        <a href="index.php" class="btn btn-primary mt-4">Ir para o Sistema</a>
+                        </ul>
                     </div>
                 <?php endif; ?>
-            </div>
-        <?php endif; ?>
-    </div>
+                
+                <!-- 12.5 STEP CONTENT -->
+                <div class="step-content">
+                    <?php if ($step == 1): ?>
+                        <!-- 12.5.1 STEP 1: REQUIREMENTS CHECK -->
+                        <h2>Step 1: System Requirements</h2>
+                        <div class="instructions">
+                            <p>The system will verify the necessary requirements for installation. Make sure all requirements are met before proceeding.</p>
+                        </div>
+                        
+                        <h4>System Requirements</h4>
+                        
+                        <div class="card mb-4">
+                            <div class="card-body">
+                                <div class="requirement-item">
+                                    <span>PHP Version (>= <?php echo $requirements['php']; ?>)</span>
+                                    <?php $php_check = check_php_version($requirements['php']); ?>
+                                    <span class="requirement-status <?php echo $php_check ? 'status-ok' : 'status-error'; ?>">
+                                        <?php echo $php_check ? 'OK ('.PHP_VERSION.')' : 'Error (Current: '.PHP_VERSION.')'; ?>
+                                    </span>
+                                </div>
+                                
+                                <?php foreach ($requirements['extensions'] as $extension): ?>
+                                    <div class="requirement-item">
+                                        <span>PHP Extension: <?php echo $extension; ?></span>
+                                        <?php $ext_check = check_extension($extension); ?>
+                                        <span class="requirement-status <?php echo $ext_check ? 'status-ok' : 'status-error'; ?>">
+                                            <?php echo $ext_check ? 'OK' : 'Not installed'; ?>
+                                        </span>
+                                    </div>
+                                <?php endforeach; ?>
+                                
+                                <div class="requirement-item">
+                                    <span>Write permissions in current directory</span>
+                                    <?php $write_check = is_writable('.'); ?>
+                                    <span class="requirement-status <?php echo $write_check ? 'status-ok' : 'status-error'; ?>">
+                                        <?php echo $write_check ? 'OK' : 'No permission'; ?>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="step-buttons">
+                            <?php
+                            $all_requirements_met = 
+                                check_php_version($requirements['php']) && 
+                                array_reduce($requirements['extensions'], function($carry, $extension) {
+                                    return $carry && check_extension($extension);
+                                }, true) &&
+                                is_writable('.');
+                            ?>
+                            
+                            <?php if ($all_requirements_met): ?>
+                                <a href="?step=2" class="btn btn-primary">Next Step</a>
+                            <?php else: ?>
+                                <div class="alert alert-danger">
+                                    Please resolve unmet requirements before continuing.
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                    <?php elseif ($step == 2): ?>
+                        <!-- 12.5.2 STEP 2: DATABASE CONFIGURATION -->
+                        <h2>Step 2: Database Configuration</h2>
+                        <div class="instructions">
+                            <p>Provide MySQL database connection information. The database will be created automatically if it doesn't exist.</p>
+                        </div>
+                        
+                        <form method="post" action="?step=2">
+                            <div class="form-group">
+                                <label for="db_host">Database Host:</label>
+                                <input type="text" class="form-control" id="db_host" name="db_host" 
+                                       value="<?php echo htmlspecialchars($_SESSION['db_host'] ?? 'localhost', ENT_QUOTES, 'UTF-8'); ?>" required>
+                                <small class="form-text text-muted">Usually "localhost" or database server IP address.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="db_name">Database Name:</label>
+                                <input type="text" class="form-control" id="db_name" name="db_name" 
+                                       value="<?php echo htmlspecialchars($_SESSION['db_name'] ?? 'budget_control', ENT_QUOTES, 'UTF-8'); ?>" required>
+                                <small class="form-text text-muted">The database will be created automatically if it doesn't exist.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="db_user">Database Username:</label>
+                                <input type="text" class="form-control" id="db_user" name="db_user" 
+                                       value="<?php echo htmlspecialchars($_SESSION['db_user'] ?? 'root', ENT_QUOTES, 'UTF-8'); ?>" required>
+                                <small class="form-text text-muted">User with permissions to create and modify databases.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="db_pass">Database Password:</label>
+                                <input type="password" class="form-control" id="db_pass" name="db_pass" 
+                                       value="<?php echo htmlspecialchars($_SESSION['db_pass'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                                <small class="form-text text-muted">Leave blank if no password is set.</small>
+                            </div>
+                            
+                            <div class="step-buttons">
+                                <a href="?step=1" class="btn btn-secondary">Back</a>
+                                <button type="submit" class="btn btn-primary">Next Step</button>
+                            </div>
+                        </form>
+                        
+                    <?php elseif ($step == 3): ?>
+                        <!-- 12.5.3 STEP 3: SYSTEM CONFIGURATION -->
+                        <h2>Step 3: System Configuration</h2>
+                        <div class="instructions">
+                            <p>Configure basic system and administrator information.</p>
+                        </div>
+                        
+                        <form method="post" action="?step=3" enctype="multipart/form-data">
+                            <div class="form-group">
+                                <label for="admin_email">Admin Email:</label>
+                                <input type="email" class="form-control" id="admin_email" name="admin_email" 
+                                       value="<?php echo htmlspecialchars($_SESSION['admin_email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" required>
+                                <small class="form-text text-muted">This email will be used for the first admin login.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="admin_password">Admin Password:</label>
+                                <input type="password" class="form-control" id="admin_password" name="admin_password" required>
+                                <small class="form-text text-muted">Minimum 8 characters.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="confirm_password">Confirm Password:</label>
+                                <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="system_name">System Name:</label>
+                                <input type="text" class="form-control" id="system_name" name="system_name" 
+                                       value="<?php echo htmlspecialchars($_SESSION['system_name'] ?? 'Budget Control', ENT_QUOTES, 'UTF-8'); ?>" required>
+                                <small class="form-text text-muted">Name that will appear in page headers and titles.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="logo">System Logo (optional):</label>
+                                <input type="file" class="form-control-file" id="logo" name="logo" accept="image/jpeg,image/png,image/gif">
+                                <small class="form-text text-muted">Max size: 1MB. Formats: JPEG, PNG, GIF. Image will be resized if needed.</small>
+                                <img id="logo-preview" class="logo-preview" alt="Logo preview">
+                            </div>
+                            
+                            <div class="step-buttons">
+                                <a href="?step=2" class="btn btn-secondary">Back</a>
+                                <button type="submit" class="btn btn-primary">Next Step</button>
+                            </div>
+                        </form>
+                        
+                    <?php elseif ($step == 4): ?>
+                        <!-- 12.5.4 STEP 4: CONFIRMATION -->
+                        <h2>Step 4: Confirmation</h2>
+                        <div class="instructions">
+                            <p>Review the information below and click "Complete Installation" to finish the process.</p>
+                        </div>
     
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script>
-		// Script para preview do logo
-		document.addEventListener('DOMContentLoaded', function() {
-		    const logoInput = document.getElementById('logo');
-		    if (logoInput) {
-		        logoInput.addEventListener('change', function(event) {
-		            const fileInput = event.target;
-		            const logoPreview = document.getElementById('logo-preview');
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5>Database Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Host:</strong> <?php echo htmlspecialchars($_SESSION['db_host'] ?? 'Not set', ENT_QUOTES, 'UTF-8'); ?></p>
+                                <p><strong>Database Name:</strong> <?php echo htmlspecialchars($_SESSION['db_name'] ?? 'Not set', ENT_QUOTES, 'UTF-8'); ?></p>
+                                <p><strong>Username:</strong> <?php echo htmlspecialchars($_SESSION['db_user'] ?? 'Not set', ENT_QUOTES, 'UTF-8'); ?></p>
+                            </div>
+                        </div>
+    
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5>System Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>System Name:</strong> <?php echo htmlspecialchars($_SESSION['system_name'] ?? 'Not set', ENT_QUOTES, 'UTF-8'); ?></p>
+                                <p><strong>Admin Email:</strong> <?php echo htmlspecialchars($_SESSION['admin_email'] ?? 'Not set', ENT_QUOTES, 'UTF-8'); ?></p>
+                                <p><strong>Logo:</strong> <?php echo isset($_FILES['logo']) && $_FILES['logo']['error'] == 0 ? 'Custom' : 'Default'; ?></p>
+                            </div>
+                        </div>
+    
+                        <form method="post" action="?step=4">
+                            <div class="alert alert-warning">
+                                <p><strong>Warning:</strong> When completing installation, the following will be created:</p>
+                                <ul>
+                                    <li>Database and tables</li>
+                                    <li>Configuration files</li>
+                                    <li>Directories for uploaded files</li>
+                                </ul>
+                                <p>Make sure all information is correct.</p>
+                            </div>
             
-		            if (logoPreview && fileInput.files && fileInput.files[0]) {
-		                const reader = new FileReader();
-                
-		                reader.onload = function(e) {
-		                    logoPreview.src = e.target.result;
-		                    logoPreview.style.display = 'block';
-		                }
-                
-		                reader.readAsDataURL(fileInput.files[0]);
-		            } else if (logoPreview) {
-		                logoPreview.style.display = 'none';
-		            }
-		        });
-		    }
-		});
+                            <div class="step-buttons">
+                                <a href="?step=3" class="btn btn-secondary">Back</a>
+                                <button type="submit" class="btn btn-success">Complete Installation</button>
+                            </div>
+                        </form>
+                        
+                    <?php elseif ($step == 5): ?>
+                        <!-- 12.5.5 STEP 5: COMPLETION -->
+                        <div class="success-message">
+                            <div class="success-icon">✓</div>
+                            <h2>Installation Completed Successfully!</h2>
+                            <p>The Budget Control System has been installed correctly.</p>
+                            <p>You can now access the system and start using it.</p>
+                            
+                            <div class="alert alert-info mt-4">
+                                <p><strong>Login Information:</strong></p>
+                                <p>Email: <?php echo htmlspecialchars($_SESSION['admin_email'] ?? '', ENT_QUOTES, 'UTF-8'); ?></p>
+                                <p>Password: The password you set during installation</p>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <p><strong>For security, the installer will be automatically disabled.</strong></p>
+                                <p>If you need to reinstall, delete the "install_lock" file in the root directory.</p>
+                            </div>
+                            
+                            <a href="login.php" class="btn btn-primary mt-4">Go to Login Page</a>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
         
-        // 17. Validação do formulário
-        document.querySelectorAll('form').forEach(form => {
-            form.addEventListener('submit', function(event) {
-                const passwordInputs = form.querySelectorAll('input[type="password"]');
+        <!-- 13.0 JAVASCRIPT INCLUDES -->
+        <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" 
+                integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" 
+                crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" 
+                integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" 
+                crossorigin="anonymous"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" 
+                integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV" 
+                crossorigin="anonymous"></script>
+        
+        <!-- 14.0 CUSTOM JAVASCRIPT -->
+        <script>
+
+            // 14.1 LOGO PREVIEW FUNCTIONALITY
+            document.addEventListener('DOMContentLoaded', function() {
+                // 14.1.1 GET ELEMENTS
+                const logoInput = document.getElementById('logo');
+                const logoPreview = document.getElementById('logo-preview');
                 
-                if (passwordInputs.length >= 2) {
-                    const password = form.querySelector('#admin_password')?.value;
-                    const confirmPassword = form.querySelector('#confirm_password')?.value;
-                    
-                    if (password && confirmPassword && password !== confirmPassword) {
-                        alert('As senhas não correspondem!');
-                        event.preventDefault();
-                        return false;
+                // 14.1.2 VALIDATE ELEMENTS EXIST
+                if (!logoInput || !logoPreview) return;
+                
+                // 14.1.3 FILE INPUT CHANGE HANDLER
+                logoInput.addEventListener('change', function(event) {
+                    // 14.1.3.1 VALIDATE FILE SELECTION
+                    if (!event.target.files || !event.target.files[0]) {
+                        logoPreview.style.display = 'none';
+                        return;
                     }
                     
-                    if (password && password.length < 6) {
-                        alert('A senha deve ter pelo menos 6 caracteres!');
-                        event.preventDefault();
-                        return false;
+                    // 14.1.3.2 VALIDATE FILE TYPE
+                    const file = event.target.files[0];
+                    const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+                    if (!validTypes.includes(file.type)) {
+                        alert('Invalid file type. Please select JPEG, PNG or GIF.');
+                        event.target.value = '';
+                        logoPreview.style.display = 'none';
+                        return;
                     }
+                    
+                    // 14.1.3.3 VALIDATE FILE SIZE (client-side)
+                    const maxSize = 1024 * 1024; // 1MB
+                    if (file.size > maxSize) {
+                        alert('File size exceeds 1MB limit. Please choose a smaller image.');
+                        event.target.value = '';
+                        logoPreview.style.display = 'none';
+                        return;
+                    }
+                    
+                    // 14.1.3.4 CREATE PREVIEW
+                    const reader = new FileReader();
+                    
+                    // 14.1.3.5 READER LOAD HANDLER
+                    reader.onload = function(e) {
+                        logoPreview.src = e.target.result;
+                        logoPreview.style.display = 'block';
+                        
+                        // 14.1.3.6 ADD STYLING TO PREVIEW
+                        logoPreview.style.maxWidth = '100%';
+                        logoPreview.style.height = 'auto';
+                        logoPreview.style.marginTop = '10px';
+                        logoPreview.style.borderRadius = '4px';
+                    };
+                    
+                    // 14.1.3.7 ERROR HANDLER
+                    reader.onerror = function() {
+                        console.error('Error reading file');
+                        logoPreview.style.display = 'none';
+                    };
+                    
+                    // 14.1.3.8 READ FILE
+                    reader.readAsDataURL(file);
+                });
+                
+                // 14.1.4 DRAG AND DROP FUNCTIONALITY
+                const dropArea = logoInput.closest('.form-group');
+                
+                // 14.1.4.1 PREVENT DEFAULT DRAG BEHAVIORS
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, preventDefaults, false);
+                });
+                
+                function preventDefaults(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
                 }
                 
-                return true;
+                // 14.1.4.2 HIGHLIGHT DROP AREA
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, highlight, false);
+                });
+                
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, unhighlight, false);
+                });
+                
+                function highlight() {
+                    dropArea.classList.add('highlight');
+                }
+                
+                function unhighlight() {
+                    dropArea.classList.remove('highlight');
+                }
+                
+                // 14.1.4.3 HANDLE DROP
+                dropArea.addEventListener('drop', handleDrop, false);
+                
+                function handleDrop(e) {
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    
+                    if (files.length) {
+                        logoInput.files = files;
+                        const event = new Event('change');
+                        logoInput.dispatchEvent(event);
+                    }
+                }
             });
-        });
-    </script>
-</body>
-</html>
+
+            // 14.2 FORM VALIDATION
+            document.addEventListener('DOMContentLoaded', function() {
+                // 14.2.1 GET ALL FORMS
+                const forms = document.querySelectorAll('form');
+                
+                // 14.2.2 ADD VALIDATION TO EACH FORM
+                forms.forEach(form => {
+                    // 14.2.2.1 PASSWORD MATCHING VALIDATION
+                    const passwordInput = form.querySelector('#admin_password');
+                    const confirmPasswordInput = form.querySelector('#confirm_password');
+                    
+                    if (passwordInput && confirmPasswordInput) {
+                        // 14.2.2.1.1 REAL-TIME VALIDATION
+                        confirmPasswordInput.addEventListener('input', function() {
+                            if (passwordInput.value !== confirmPasswordInput.value) {
+                                confirmPasswordInput.setCustomValidity('Passwords do not match');
+                            } else {
+                                confirmPasswordInput.setCustomValidity('');
+                            }
+                        });
+                    }
+                    
+                    // 14.2.2.2 EMAIL VALIDATION
+                    const emailInput = form.querySelector('#admin_email');
+                    if (emailInput) {
+                        emailInput.addEventListener('input', function() {
+                            if (!emailInput.validity.valid) {
+                                emailInput.setCustomValidity('Please enter a valid email address');
+                            } else {
+                                emailInput.setCustomValidity('');
+                            }
+                        });
+                    }
+                    
+                    // 14.2.2.3 FORM SUBMISSION HANDLER
+                    form.addEventListener('submit', function(event) {
+                        // 14.2.2.3.1 VALIDATE REQUIRED FIELDS
+                        const requiredFields = form.querySelectorAll('[required]');
+                        let isValid = true;
+                        
+                        requiredFields.forEach(field => {
+                            if (!field.value.trim()) {
+                                field.reportValidity();
+                                isValid = false;
+                            }
+                        });
+                        
+                        // 14.2.2.3.2 VALIDATE PASSWORD LENGTH
+                        if (passwordInput && passwordInput.value.length < 8) {
+                            passwordInput.setCustomValidity('Password must be at least 8 characters');
+                            passwordInput.reportValidity();
+                            isValid = false;
+                        }
+                        
+                        // 14.2.2.3.3 PREVENT SUBMISSION IF INVALID
+                        if (!isValid) {
+                            event.preventDefault();
+                            return false;
+                        }
+                        
+                        // 14.2.2.3.4 SHOW LOADING STATE
+                        const submitButton = form.querySelector('button[type="submit"]');
+                        if (submitButton) {
+                            submitButton.disabled = true;
+                            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                        }
+                        
+                        return true;
+                    });
+                });
+                
+                // 14.2.3 DYNAMIC REQUIREMENT CHECKING
+                const requirementItems = document.querySelectorAll('.requirement-item');
+                if (requirementItems.length) {
+                    // 14.2.3.1 ADD TOOLTIPS
+                    requirementItems.forEach(item => {
+                        const status = item.querySelector('.requirement-status');
+                        if (status) {
+                            item.setAttribute('title', status.textContent);
+                            item.style.cursor = 'help';
+                        }
+                    });
+                }
+            });
+
+            // 14.3 PROGRESS INDICATOR ANIMATION
+            document.addEventListener('DOMContentLoaded', function() {
+                const stepIndicator = document.querySelector('.step-indicator');
+                if (stepIndicator) {
+                    // 14.3.1 ANIMATE PROGRESS BAR
+                    const steps = stepIndicator.querySelectorAll('.step');
+                    let activeFound = false;
+                    
+                    steps.forEach((step, index) => {
+                        // 14.3.1.1 ADD CLICK HANDLERS FOR NAVIGATION
+                        step.addEventListener('click', function() {
+                            if (index < <?php echo $step; ?>) {
+                                window.location.href = `?step=${index + 1}`;
+                            }
+                        });
+                        
+                        // 14.3.1.2 ADD HOVER EFFECTS
+                        if (index < <?php echo $step; ?>) {
+                            step.style.cursor = 'pointer';
+                            step.addEventListener('mouseenter', function() {
+                                this.style.transform = 'scale(1.1)';
+                            });
+                            step.addEventListener('mouseleave', function() {
+                                this.style.transform = 'scale(1)';
+                            });
+                        }
+                    });
+                    
+                    // 14.3.2 ANIMATE ACTIVE STEP
+                    const activeStep = stepIndicator.querySelector('.step.active');
+                    if (activeStep) {
+                        activeStep.style.transition = 'all 0.3s ease';
+                        activeStep.style.boxShadow = '0 0 0 5px rgba(32, 98, 183, 0.3)';
+                        
+                        setTimeout(() => {
+                            activeStep.style.boxShadow = 'none';
+                        }, 1000);
+                    }
+                }
+            });
+
+            // 14.4 ERROR DISPLAY ENHANCEMENTS
+            document.addEventListener('DOMContentLoaded', function() {
+                const errorList = document.querySelector('.error-list');
+                if (errorList) {
+                    // 14.4.1 ANIMATE ERROR APPEARANCE
+                    errorList.style.opacity = '0';
+                    errorList.style.transform = 'translateY(-20px)';
+                    errorList.style.transition = 'all 0.3s ease';
+                    
+                    setTimeout(() => {
+                        errorList.style.opacity = '1';
+                        errorList.style.transform = 'translateY(0)';
+                    }, 100);
+                    
+                    // 14.4.2 ADD DISMISS BUTTON
+                    const dismissButton = document.createElement('button');
+                    dismissButton.innerHTML = '&times;';
+                    dismissButton.className = 'close';
+                    dismissButton.style.position = 'absolute';
+                    dismissButton.style.right = '10px';
+                    dismissButton.style.top = '10px';
+                    dismissButton.setAttribute('aria-label', 'Close');
+                    
+                    dismissButton.addEventListener('click', function() {
+                        errorList.style.opacity = '0';
+                        setTimeout(() => {
+                            errorList.style.display = 'none';
+                        }, 300);
+                    });
+                    
+                    errorList.style.position = 'relative';
+                    errorList.prepend(dismissButton);
+                }
+            });
+        </script>
+    </body>
+    </html>

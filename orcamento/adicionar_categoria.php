@@ -21,7 +21,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $numero_conta = trim($_POST['numero_conta']);
     $descricao = trim($_POST['descricao']);
     $budget = str_replace([',', '€'], ['.', ''], trim($_POST['budget']));
-    $categoria_pai_id = !empty($_POST['categoria_pai_id']) ? intval($_POST['categoria_pai_id']) : null;
     
     // Validar dados
     if (empty($numero_conta) || empty($descricao) || !is_numeric($budget)) {
@@ -29,38 +28,44 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } else {
         try {
             // Determinar nível
-            $nivel = 1; // Padrão para categoria raiz
+            $nivel = substr_count($numero_conta, '.') + 1;
             
-            if ($categoria_pai_id) {
-                // Obter nível da categoria pai
-                $stmt = $pdo->prepare("SELECT nivel FROM categorias WHERE id = :id");
-                $stmt->bindParam(':id', $categoria_pai_id, PDO::PARAM_INT);
-                $stmt->execute();
-                $categoria_pai = $stmt->fetch();
+            // Encontrar categoria pai automaticamente
+            $categoria_pai_id = null;
+            if ($nivel > 1) {
+                $categoria_pai_id = encontrarCategoriaPai($pdo, $projeto_id, $numero_conta);
                 
-                if ($categoria_pai) {
-                    $nivel = $categoria_pai['nivel'] + 1;
+                if (!$categoria_pai_id) {
+                    $mensagem = "Categoria pai não encontrada. Certifique-se de criar as categorias em ordem hierárquica.";
                 }
-            } else {
-                // Se não tem pai, determinar nível pelo número de pontos
-                $nivel = substr_count($numero_conta, '.') + 1;
             }
             
-            // Verificar se o número da conta já existe
-            $stmt = $pdo->prepare("SELECT id FROM categorias WHERE projeto_id = :projeto_id AND numero_conta = :numero_conta");
-            $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
-            $stmt->bindParam(':numero_conta', $numero_conta, PDO::PARAM_STR);
-            $stmt->execute();
-            
-            if ($stmt->rowCount() > 0) {
-                $mensagem = "Este número de conta já existe neste projeto.";
-            } else {
-                // Inserir categoria
-                $id = inserirCategoria($pdo, $projeto_id, $numero_conta, $descricao, $budget, $categoria_pai_id, $nivel);
+            // Se não houve erro na busca da categoria pai, continuar
+            if (empty($mensagem)) {
+                // Verificar se o número da conta já existe
+                $stmt = $pdo->prepare("SELECT id FROM categorias WHERE projeto_id = :projeto_id AND numero_conta = :numero_conta");
+                $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+                $stmt->bindParam(':numero_conta', $numero_conta, PDO::PARAM_STR);
+                $stmt->execute();
                 
-                // Redirecionar para a página de edição de orçamento
-                header("Location: ../orcamento/editar.php?projeto_id=$projeto_id&mensagem=Categoria adicionada com sucesso!");
-                exit;
+                if ($stmt->rowCount() > 0) {
+                    $mensagem = "Este número de conta já existe neste projeto.";
+                } else {
+                    // Inserir categoria
+                    $stmt = $pdo->prepare("INSERT INTO categorias (projeto_id, numero_conta, descricao, budget, categoria_pai_id, nivel) 
+                                          VALUES (:projeto_id, :numero_conta, :descricao, :budget, :categoria_pai_id, :nivel)");
+                    $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+                    $stmt->bindParam(':numero_conta', $numero_conta, PDO::PARAM_STR);
+                    $stmt->bindParam(':descricao', $descricao, PDO::PARAM_STR);
+                    $stmt->bindParam(':budget', $budget, PDO::PARAM_STR);
+                    $stmt->bindParam(':categoria_pai_id', $categoria_pai_id, PDO::PARAM_INT);
+                    $stmt->bindParam(':nivel', $nivel, PDO::PARAM_INT);
+                    $stmt->execute();
+                    
+                    // Redirecionar para a página de edição de orçamento
+                    header("Location: ../orcamento/editar.php?projeto_id=$projeto_id&mensagem=Categoria adicionada com sucesso!");
+                    exit;
+                }
             }
         } catch (PDOException $e) {
             $mensagem = "Erro ao adicionar categoria: " . $e->getMessage();
@@ -81,6 +86,23 @@ $categorias = $stmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Adicionar Categoria - Gestão de Eventos</title>
     <link rel="stylesheet" href="../assets/css/style.css">
+    <style>
+        .categorias-existentes {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .categoria-item {
+            margin-bottom: 5px;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .nivel-1 { font-weight: bold; }
+        .nivel-2 { margin-left: 20px; }
+        .nivel-3 { margin-left: 40px; }
+        .nivel-4 { margin-left: 60px; }
+    </style>
 </head>
 <body>
     <?php include '../includes/header.php'; ?>
@@ -93,10 +115,25 @@ $categorias = $stmt->fetchAll();
             <div class="alert alert-info"><?php echo $mensagem; ?></div>
         <?php endif; ?>
         
+        <?php if (count($categorias) > 0): ?>
+        <div class="categorias-existentes">
+            <h3>Categorias Existentes</h3>
+            <p>Para criar subcategorias, use o formato correto (ex: se existe "1", você pode criar "1.1")</p>
+            <?php foreach ($categorias as $cat): 
+                $nivel_classe = 'nivel-' . (substr_count($cat['numero_conta'], '.') + 1);
+            ?>
+                <div class="categoria-item <?php echo $nivel_classe; ?>">
+                    <strong><?php echo htmlspecialchars($cat['numero_conta']); ?></strong> - 
+                    <?php echo htmlspecialchars($cat['descricao']); ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        
         <form method="post" action="">
             <div class="form-group">
                 <label for="numero_conta">Número da Conta:</label>
-                <input type="text" id="numero_conta" name="numero_conta" placeholder="Ex: 1.4.5" required>
+                <input type="text" id="numero_conta" name="numero_conta" placeholder="Ex: 1 ou 1.1 ou 1.1.1" required>
                 <small class="info">O formato deve seguir o padrão de hierarquia (ex: 1, 1.1, 1.1.1)</small>
             </div>
             
@@ -108,17 +145,7 @@ $categorias = $stmt->fetchAll();
             <div class="form-group">
                 <label for="budget">Orçamento (€):</label>
                 <input type="text" id="budget" name="budget" placeholder="0,00" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="categoria_pai_id">Categoria Pai (opcional):</label>
-                <select id="categoria_pai_id" name="categoria_pai_id">
-                    <option value="">Nenhuma (categoria raiz)</option>
-                    <?php foreach ($categorias as $categoria): ?>
-                        <option value="<?php echo $categoria['id']; ?>"><?php echo htmlspecialchars($categoria['numero_conta'] . ' - ' . $categoria['descricao']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <small class="info">Se selecionada, o nível será determinado automaticamente</small>
+                <small class="info">Para categorias de nível 1 e 2, o orçamento será calculado automaticamente como a soma das subcategorias.</small>
             </div>
             
             <button type="submit" class="btn btn-primary">Adicionar Categoria</button>
