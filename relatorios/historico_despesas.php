@@ -77,7 +77,7 @@ if ($despesa_id > 0) {
                 <p><strong>Data:</strong> <?php echo date('d/m/Y', strtotime($despesa['data_despesa'])); ?></p>
                 <p><strong>Descrição:</strong> <?php echo htmlspecialchars($despesa['descricao']); ?></p>
                 <?php if (!empty($despesa['anexo_path'])): ?>
-                    <p><strong>Anexo:</strong> <a href="../assets/arquivos/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver anexo</a></p>
+                    <p><strong>Anexo:</strong> <a href="/mnt/Dados/facturas/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver anexo</a></p>
                 <?php endif; ?>
             </div>
             

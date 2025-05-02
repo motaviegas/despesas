@@ -70,7 +70,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirmar_exclusao']))
         
         // Verificar se há anexo e excluir o arquivo
         if (!empty($despesa['anexo_path'])) {
-            $anexo_full_path = dirname(__FILE__) . '/../assets/arquivos/' . $despesa['anexo_path'];
+            $anexo_full_path = '/mnt/Dados/facturas/' . $despesa['anexo_path'];
+            // Verificar se o diretório existe e tem permissões
+            if (!is_dir('/mnt/Dados/facturas')) {
+                error_log("Erro: Diretório de anexos não encontrado: /mnt/Dados/facturas");
+            } elseif (!is_writable('/mnt/Dados/facturas')) {
+                error_log("Erro: Diretório de anexos sem permissão de escrita: /mnt/Dados/facturas");
+            }
             if (file_exists($anexo_full_path)) {
                 unlink($anexo_full_path);
             }
@@ -141,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirmar_exclusao']))
             <p><strong>Data:</strong> <?php echo date('d/m/Y', strtotime($despesa['data_despesa'])); ?></p>
             <p><strong>Descrição:</strong> <?php echo htmlspecialchars($despesa['descricao']); ?></p>
             <?php if (!empty($despesa['anexo_path'])): ?>
-                <p><strong>Anexo:</strong> <a href="../assets/arquivos/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver anexo</a></p>
+                <p><strong>Anexo:</strong> <a href="/mnt/Dados/facturas/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver anexo</a></p>
             <?php endif; ?>
         </div>
         

@@ -1,28 +1,41 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Build/Run Commands
-- Run web application: `php -S localhost:8000`
-- Debug mode: Set `ini_set('display_errors', 1)` at file start
 - Database: MySQL/MariaDB with PDO connection
 
 ## Code Style Guidelines
-- **Structure**: Organize with numbered section comments `// 1.0 SECTION NAME`
-- **Naming**: Function names use camelCase in English (verifyLogin, getBaseURL)
-- **Indentation**: 4 spaces with consistent bracing style
-- **Documentation**: PHPDoc format for all functions with @param, @return tags
-- **Security**: Use prepared statements, CSRF protection, input sanitization
-- **Input Validation**: Filter and validate all inputs with appropriate type checks
-- **Error Handling**: Try/catch blocks with specific exceptions and error logging
-- **Sessions**: Secure session handling with hijacking prevention
-- **Formatting**: Currency with number_format(), using `,` as decimal and `.` as thousands separator
-- **HTML Output**: Always use htmlspecialchars() for dynamic content
-- **JavaScript**: jQuery for DOM manipulation and AJAX requests
+- **Path constants**: Use absolute paths for file storage locations
+- **File handling**: Use is_dir() and is_writable() to verify directories
+- **Error handling**: Log errors when file operations fail
 
 ## Auto-Fix Guidelines
-Claude Code should automatically fix these issues:
-- **Function names**: Change `verifyLogin()` to `verificarLogin()` in includes/functions.php
-- **Session handling**: Remove duplicate session_start() calls in dashboard.php
-- **Authentication**: Update all files to use verificarLogin() consistently
-- **Error handling**: Add consistent error logging in authentication functions
+Claude Code should automatically change the file storage path from `assets/arquivos` to `/mnt/Dados/facturas` and update all related code:
+
+### File Path Changes
+- Change all occurrences of `../assets/arquivos/` to `/mnt/Dados/facturas/`
+- Change all occurrences of `assets/arquivos/` to `/mnt/Dados/facturas/`
+- Change all occurrences of `dirname(__FILE__) . '/../assets/arquivos/'` to `/mnt/Dados/facturas/`
+
+### Files to Update
+1. **despesas/excluir.php** (line 118): Update `$anexo_full_path` assignment
+2. **despesas/registrar.php** (line 35): Update `$upload_dir` assignment
+3. **despesas/editar.php** (line 101): Update `$upload_dir` assignment
+4. **despesas/editar.php** (line 104): Update `$target_file` assignment
+5. **despesas/editar.php** (line 124): Update `$old_file` path construction
+6. **despesas/editar.php** (line 233): Update href link construction
+7. **despesas/listar.php** (line 238): Update href path
+8. **despesas/listar.php** (line 310): Update href path
+9. **despesas/listar.php** (line 354): Update href path
+10. **relatorios/gerar.php** (line 505): Update href path
+11. **relatorios/historico_despesas.php** (line 215): Update href path
+12. **relatorios/historico_despesas.php** (line 253): Update href path
+
+### Additional Required Changes
+1. Add directory existence and writability checks before file operations:
+```php
+if (!is_dir('/mnt/Dados/facturas')) {
+    // Log error or create directory if permissions allow
+}
+if (!is_writable('/mnt/Dados/facturas')) {
+    // Log error
+}

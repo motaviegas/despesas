@@ -512,7 +512,7 @@ if (isset($_GET['exportar']) && $_GET['exportar'] == 'excel') {
 		                               <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
 		                               <td>
 		                                   <?php if (!empty($despesa['anexo_path'])): ?>
-		                                       <a href="../assets/arquivos/<?php echo $despesa['anexo_path']; ?>" target="_blank" class="anexo-link" title="Ver fatura">
+		                                       <a href="/mnt/Dados/facturas/<?php echo $despesa['anexo_path']; ?>" target="_blank" class="anexo-link" title="Ver fatura">
 		                                           <i class="fa fa-file-pdf-o"></i> Fatura
 		                                       </a>
 		                                   <?php else: ?>

@@ -251,7 +251,7 @@ $total_despesas = $resultado_total['total'];
                             <td><?php echo number_format($despesa['valor'], 2, ',', '.'); ?> €</td>
                             <td>
                                 <?php if ($despesa['anexo_path']): ?>
-                                    <a href="../assets/arquivos/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank" title="Ver anexo"><i class="fa fa-file-pdf-o"></i></a>
+                                    <a href="/mnt/Dados/facturas/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank" title="Ver anexo"><i class="fa fa-file-pdf-o"></i></a>
                                 <?php else: ?>
                                     <span class="no-anexo">-</span>
                                 <?php endif; ?>

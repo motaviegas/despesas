@@ -59,11 +59,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $anexo_path = $despesa['anexo_path']; // Manter o anexo existente
         
         if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] == 0) {
-            $upload_dir = dirname(__FILE__) . '/../assets/arquivos/';
+            $upload_dir = '/mnt/Dados/facturas/';
             
-            // Criar o diretório se não existir
+            // Verificar se o diretório existe e tem permissões
             if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
+                error_log("Erro: Diretório de anexos não encontrado: " . $upload_dir);
+                // Tentar criar o diretório, se possível
+                try {
+                    mkdir($upload_dir, 0755, true);
+                } catch (Exception $e) {
+                    error_log("Erro ao criar diretório de anexos: " . $e->getMessage());
+                    throw new RuntimeException("Não foi possível criar o diretório de anexos.");
+                }
+            } elseif (!is_writable($upload_dir)) {
+                error_log("Erro: Diretório de anexos sem permissão de escrita: " . $upload_dir);
+                throw new RuntimeException("Diretório de anexos sem permissão de escrita.");
             }
             
             $file_name = time() . '_' . basename($_FILES['anexo']['name']);
@@ -76,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 if (move_uploaded_file($_FILES['anexo']['tmp_name'], $target_file)) {
                     // Se já existir um anexo anterior, excluir
                     if (!empty($despesa['anexo_path'])) {
-                        $old_file = $upload_dir . $despesa['anexo_path'];
+                        $old_file = '/mnt/Dados/facturas/' . $despesa['anexo_path'];
                         if (file_exists($old_file)) {
                             unlink($old_file);
                         }
@@ -229,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="form-group">
                 <label for="anexo">Anexo (Fatura/Recibo):</label>
                 <?php if (!empty($despesa['anexo_path'])): ?>
-                    <p>Anexo atual: <a href="../assets/arquivos/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver anexo</a></p>
+                    <p>Anexo atual: <a href="/mnt/Dados/facturas/<?php echo htmlspecialchars($despesa['anexo_path']); ?>" target="_blank">Ver anexo</a></p>
                     <p>Deixe em branco para manter o anexo atual ou escolha um novo arquivo para substituí-lo:</p>
                 <?php endif; ?>
                 <input type="file" id="anexo" name="anexo" accept=".pdf,.jpg,.jpeg,.png,.gif,.tiff,.webp">
