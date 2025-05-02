@@ -7,7 +7,7 @@
  * @return void
  * @throws RuntimeException If security checks fail
  */
-function verifyLogin() {
+function verificarLogin() {
     // 1.1.1 VALIDATE SESSION CONFIGURATION
     if (session_status() === PHP_SESSION_NONE) {
         // 1.1.1.1 SET SECURE SESSION PARAMETERS
@@ -25,11 +25,13 @@ function verifyLogin() {
         if (ini_get('session.cookie_secure') !== '1' || 
             ini_get('session.cookie_httponly') !== '1' ||
             ini_get('session.use_strict_mode') !== '1') {
+            error_log("Erro de segurança: Configuração insegura de sessão detectada");
             throw new RuntimeException('Insecure session configuration detected');
         }
 
         // 1.1.1.3 START SECURE SESSION
         if (!session_start($session_params)) {
+            error_log("Erro crítico: Falha ao iniciar sessão segura");
             throw new RuntimeException('Failed to start secure session');
         }
     }
@@ -44,6 +46,9 @@ function verifyLogin() {
         // 1.1.2.1 VALIDATE SESSION CONSISTENCY
         if ($_SESSION['ip_address'] !== $_SERVER['REMOTE_ADDR'] ||
             $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+            $ipChanged = $_SESSION['ip_address'] !== $_SERVER['REMOTE_ADDR'];
+            $userAgentChanged = $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT'];
+            error_log("Alerta de segurança: Possível hijacking de sessão detectado. IP alterado: " . ($ipChanged ? 'Sim' : 'Não') . ", User-Agent alterado: " . ($userAgentChanged ? 'Sim' : 'Não'));
             session_unset();
             session_destroy();
             throw new RuntimeException('Session hijacking detected');
@@ -61,6 +66,7 @@ function verifyLogin() {
         if (in_array($_SERVER['SCRIPT_NAME'], $sensitive_paths)) {
             if (empty($_POST['csrf_token']) || 
                 !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+                error_log("Erro de segurança: Falha na validação do token CSRF em " . $_SERVER['SCRIPT_NAME'] . ", IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'desconhecido'));
                 throw new RuntimeException('CSRF token validation failed');
             }
         }
@@ -68,6 +74,7 @@ function verifyLogin() {
 
     // 1.1.4 VERIFY AUTHENTICATION STATUS
     if (empty($_SESSION['usuario_id'])) {
+        error_log("Acesso não autorizado: Tentativa de acesso sem autenticação em " . ($_SERVER['SCRIPT_NAME'] ?? 'script desconhecido') . ", IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'desconhecido'));
         session_regenerate_id(true);
         header("Location: " . getBaseURL() . "/login.php");
         exit;
@@ -79,6 +86,7 @@ function verifyLogin() {
     // 1.1.6 SESSION TIMEOUT (30 minutes)
     if (isset($_SESSION['last_activity']) && 
         (time() - $_SESSION['last_activity'] > 1800)) {
+        error_log("Sessão expirada: Timeout para o usuário " . ($_SESSION['usuario_id'] ?? 'desconhecido') . ", IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'desconhecido'));
         session_unset();
         session_destroy();
         header("Location: " . getBaseURL() . "/login.php?timeout=1");
@@ -107,7 +115,7 @@ function getBaseURL() {
  * Verifies if current user has admin privileges
  * @return bool True if admin, false otherwise
  */
-function isAdmin() {
+function ehAdmin() {
     return (isset($_SESSION['tipo_conta']) && $_SESSION['tipo_conta'] === 'admin');
 }
 
@@ -132,7 +140,11 @@ function generateCSRFToken() {
  * @return bool True if valid, false otherwise
  */
 function verifyCSRFToken($token) {
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    $isValid = isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    if (!$isValid) {
+        error_log("Erro de segurança: Falha na validação do token CSRF em " . ($_SERVER['SCRIPT_NAME'] ?? 'script desconhecido') . ", IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'desconhecido'));
+    }
+    return $isValid;
 }
 
 // 3.0 CATEGORY AND BUDGET FUNCTIONS

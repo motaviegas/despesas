@@ -12,10 +12,10 @@ require_once '../config/db.php';
 require_once '../includes/functions.php';
 
 // 1.3 AUTHENTICATION CHECK
-verifyLogin();
+verificarLogin();
 
 // 1.4 ADMIN PRIVILEGE CHECK
-if (!isAdmin()) {
+if (!ehAdmin()) {
     header('Location: ../dashboard.php');
     exit;
 }

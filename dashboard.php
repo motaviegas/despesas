@@ -38,12 +38,6 @@ try {
     } else {
         throw new Exception("Arquivo includes/functions.php não encontrado");
     }
-    
-/* 1. INCLUSÃO DE ARQUIVOS E CONFIGURAÇÕES INICIAIS */
-session_start();
-try {
-    require_once 'config/db.php';
-    require_once 'includes/functions.php';
 
 	// Verificar se a função existe antes de chamá-la
 	if (function_exists('verificarLogin')) {
