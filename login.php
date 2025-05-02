@@ -36,11 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             // 3.4 USER AUTHENTICATION
             if ($usuario = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 // 3.4.1 ACCOUNT STATUS CHECK
-				if (!usuario['ativo']) {
-				error = "Account not activated. Please check your email.";
-				}
+                if (!$usuario['ativo']) {
+                    $error = "Account not activated. Please check your email.";
+                }
                 // 3.4.2 PASSWORD VERIFICATION
-                elseif (password_verify(senha,usuario['senha'])) {
+                elseif (password_verify($senha, $usuario['senha'])) {
                     // 3.4.3 SESSION CREATION
                     $_SESSION['usuario_id'] = $usuario['id'];
                     $_SESSION['email'] = $usuario['email'];
@@ -48,33 +48,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
                     $_SESSION['logged_in'] = true;
                     $_SESSION['last_activity'] = time();
                     
-					// 3.4.4 SESSION REGENERATION
-					session_regenerate_id(true);
+                    // 3.4.4 SESSION REGENERATION
+                    session_regenerate_id(true);
                     
                     // 3.4.5 UPDATE LAST LOGIN
                     $update_stmt = $pdo->prepare("UPDATE usuarios SET ultimo_login = NOW() WHERE id = :id");
                     $update_stmt->bindParam(':id', $usuario['id'], PDO::PARAM_INT);
                     $update_stmt->execute();
                     
-					// 3.4.6 REDIRECTION
-					if (!headers_sent()) {
-					    header('Location: dashboard.php');
-					    exit();
-					} else {
-					    echo '<script>window.location.href="dashboard.php";</script>';
-					    exit();
-					}
-					    } else {
-					        $error = "Invalid credentials.";
-					    }
-					} else {
-					    $error = "Invalid credentials.";
-					}
-    
-					// 3.5 FAILED LOGIN HANDLING
-					if (!empty($error)) {
-					    error_log("Failed login attempt for email: " . $email);
-					}
+                    // 3.4.6 REDIRECTION
+                    if (!headers_sent()) {
+                        header('Location: dashboard.php');
+                        exit();
+                    } else {
+                        echo '<script>window.location.href="dashboard.php";</script>';
+                        exit();
+                    }
+                } else {
+                    $error = "Invalid credentials.";
+                }
+            } else {
+                $error = "Invalid credentials.";
+            }
+        } catch (PDOException $e) {
+            $error = "Database error: " . $e->getMessage();
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
