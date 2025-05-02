@@ -70,15 +70,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirmar_exclusao']))
         
         // Verificar se há anexo e excluir o arquivo
         if (!empty($despesa['anexo_path'])) {
-            $anexo_full_path = '/mnt/Dados/facturas/' . $despesa['anexo_path'];
-            // Verificar se o diretório existe e tem permissões
-            if (!is_dir('/mnt/Dados/facturas')) {
-                error_log("Erro: Diretório de anexos não encontrado: /mnt/Dados/facturas");
-            } elseif (!is_writable('/mnt/Dados/facturas')) {
-                error_log("Erro: Diretório de anexos sem permissão de escrita: /mnt/Dados/facturas");
-            }
-            if (file_exists($anexo_full_path)) {
-                unlink($anexo_full_path);
+            $anexo_dir = '/mnt/Dados/facturas/';
+            $anexo_full_path = $anexo_dir . $despesa['anexo_path'];
+            
+            try {
+                // Verificar se o diretório existe e tem permissões
+                ensureUploadsDirectory($anexo_dir);
+                
+                if (file_exists($anexo_full_path)) {
+                    unlink($anexo_full_path);
+                }
+            } catch (RuntimeException $e) {
+                error_log("Erro ao acessar diretório de anexos: " . $e->getMessage());
+                // Continar com a exclusão mesmo se não puder excluir o arquivo
             }
         }
         

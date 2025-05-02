@@ -1,63 +1,11 @@
 <?php
-// DEBUG - Exibir erros
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-// Função para debug
-function debug_to_console($data) {
-    $output = $data;
-    if (is_array($output)) {
-        $output = implode(',', $output);
-    }
-    echo "<script>console.log('Debug: " . addslashes($output) . "');</script>";
-}
-
-// Iniciar buffer de saída para capturar erros
-ob_start();
-//***********
 /* 1. INCLUSÃO DE ARQUIVOS E CONFIGURAÇÕES INICIAIS */
 try {
-    session_start();
-    debug_to_console("Session started");
+    require_once 'config/db.php';
+    require_once 'includes/functions.php';
     
-    // Debug das variáveis de sessão
-    debug_to_console("SESSION: " . json_encode($_SESSION));
-    
-    // Verificar se os arquivos existem antes de incluí-los
-    if (file_exists('config/db.php')) {
-        require_once 'config/db.php';
-        debug_to_console("DB file loaded");
-    } else {
-        throw new Exception("Arquivo config/db.php não encontrado");
-    }
-    
-    if (file_exists('includes/functions.php')) {
-        require_once 'includes/functions.php';
-        debug_to_console("Functions file loaded");
-    } else {
-        throw new Exception("Arquivo includes/functions.php não encontrado");
-    }
-
-	// Verificar se a função existe antes de chamá-la
-	if (function_exists('verificarLogin')) {
-	    try {
-	        verificarLogin();
-	    } catch (Exception $e) {
-	        error_log("Erro na verificação de login: " . $e->getMessage());
-	        // Implementação alternativa em caso de erro
-	        if (!isset($_SESSION['usuario_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-	            header('Location: login.php');
-	            exit;
-	        }
-	    }
-	} else {
-	    // Implementação alternativa se a função não existir
-	    if (!isset($_SESSION['usuario_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-	        header('Location: login.php');
-	        exit;
-	    }
-	}
+    // Verificar login do usuário
+    verificarLogin();
 } catch (Exception $e) {
     error_log("Erro na inicialização: " . $e->getMessage());
     echo "Ocorreu um erro ao carregar a página. Por favor, tente novamente mais tarde.";
@@ -805,17 +753,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-
-// Capturar qualquer saída de erro
-$error_output = ob_get_clean();
-if (!empty($error_output)) {
-    echo "<div style='background-color: #ffcccc; border: 1px solid #ff0000; padding: 10px; margin: 10px;'>";
-    echo "<h3>Erros detectados:</h3>";
-    echo "<pre>" . htmlspecialchars($error_output) . "</pre>";
-    echo "</div>";
-} else {
-    ob_end_flush(); // Se não houver erros, exibe a saída normal
-}
 ?>
 <!-- 13. RODAPÉ -->
 <?php include 'includes/footer.php'; ?>

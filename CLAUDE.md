@@ -34,8 +34,8 @@ Claude Code should automatically change the file storage path from `assets/arqui
 1. Add directory existence and writability checks before file operations:
 ```php
 if (!is_dir('/mnt/Dados/facturas')) {
-    // Log error or create directory if permissions allow
+   // Log error or create directory if permissions allow
 }
 if (!is_writable('/mnt/Dados/facturas')) {
-    // Log error
+   // Log error
 }

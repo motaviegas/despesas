@@ -1,6 +1,9 @@
 <?php
 // 1.0 INITIALIZATION
-session_start();
+// Check if session is already active before starting
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once 'config/db.php';
 
 // 1.1 SECURITY HEADERS
@@ -19,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
     
     // 3.1 INPUT SANITIZATION
     $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
-    $senha = $_POST['senha']; // Password will be verified, not stored
+    $senha = $_POST['senha'] ?? ''; // Password will be verified, not stored
     
     // 3.2 INPUT VALIDATION
     if (empty($email) || empty($senha)) {
@@ -72,6 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             }
         } catch (PDOException $e) {
             $error = "Database error: " . $e->getMessage();
+            // Log the error securely
+            error_log("Login error: " . $e->getMessage(), 0);
         }
     }
 }

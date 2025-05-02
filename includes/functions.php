@@ -1052,6 +1052,36 @@ function searchSuppliers($pdo, $term) {
 }
 
 /**
+ * 7.1.1 ENSURE UPLOADS DIRECTORY
+ * Checks if uploads directory exists and is writable, creates if it doesn't exist
+ * @param string $directory Directory path to check/create
+ * @param int $permissions Permissions for new directory (default: 0755)
+ * @return bool True if directory exists and is writable
+ * @throws RuntimeException if directory cannot be created or made writable
+ */
+function ensureUploadsDirectory($directory = '/mnt/Dados/facturas', $permissions = 0755) {
+    if (!is_dir($directory)) {
+        error_log("Diretório de uploads não encontrado, tentando criar: " . $directory);
+        try {
+            if (!mkdir($directory, $permissions, true)) {
+                throw new RuntimeException("Não foi possível criar o diretório: " . $directory);
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log("Erro ao criar diretório de uploads: " . $e->getMessage());
+            throw new RuntimeException("Falha ao criar diretório de uploads: " . $e->getMessage());
+        }
+    }
+    
+    if (!is_writable($directory)) {
+        error_log("Diretório de uploads sem permissão de escrita: " . $directory);
+        throw new RuntimeException("Diretório de uploads sem permissão de escrita: " . $directory);
+    }
+    
+    return true;
+}
+
+/**
  * 7.2 SEARCH CATEGORIES
  * Finds categories by description or account number
  * @param PDO $pdo Database connection
@@ -1073,6 +1103,503 @@ function searchCategories($pdo, $project_id, $term) {
     $stmt->bindParam(':term', $term, PDO::PARAM_STR);
     $stmt->execute();
     return $stmt->fetchAll();
+}
+
+/**
+ * 7.3 OBTER CATEGORIAS COM DESPESAS
+ * Retrieves all expense categories for a project with hierarchical structure
+ * @param PDO $pdo Database connection
+ * @param int $projeto_id Project ID
+ * @return array Categorias com estrutura hierárquica
+ */
+function obterCategoriasDespesas($pdo, $projeto_id) {
+    try {
+        // Validação de entrada
+        if (!is_numeric($projeto_id) || $projeto_id <= 0) {
+            throw new InvalidArgumentException("ID do projeto inválido");
+        }
+        
+        // Consulta todas as categorias do projeto
+        $stmt = $pdo->prepare("
+            SELECT 
+                c.id, c.numero_conta, c.descricao, c.budget, c.nivel, c.categoria_pai_id,
+                COALESCE(SUM(d.valor), 0) as total_despesas
+            FROM 
+                categorias c
+            LEFT JOIN 
+                despesas d ON c.id = d.categoria_id
+            WHERE 
+                c.projeto_id = :projeto_id
+            GROUP BY 
+                c.id
+            ORDER BY 
+                c.numero_conta
+        ");
+        
+        $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+    } catch (PDOException $e) {
+        error_log("Erro ao obter categorias: " . $e->getMessage());
+        throw new RuntimeException("Falha ao recuperar categorias de despesas");
+    }
+}
+
+/**
+ * 7.4 CALCULAR TOTAIS DAS CATEGORIAS
+ * Calculate budget and expense totals for categories with hierarchical structure
+ * @param array $categorias Array of categories from obterCategoriasDespesas
+ * @return array Categories with calculated totals
+ */
+function calcularTotaisCategoriasDespesas($categorias) {
+    // Organizar dados
+    $por_id = [];
+    $por_pai = [];
+    $nivel_maximo = 1;
+    
+    // Primeira passagem: organizar categorias
+    foreach ($categorias as $cat) {
+        $por_id[$cat['id']] = $cat;
+        $por_id[$cat['id']]['delta'] = $cat['budget'] - $cat['total_despesas'];
+        
+        if ($cat['categoria_pai_id'] !== null) {
+            $por_pai[$cat['categoria_pai_id']][] = $cat['id'];
+        }
+        
+        if ($cat['nivel'] > $nivel_maximo) {
+            $nivel_maximo = $cat['nivel'];
+        }
+    }
+    
+    // Segunda passagem: calcular totais de baixo para cima
+    for ($nivel = $nivel_maximo; $nivel >= 1; $nivel--) {
+        foreach ($por_id as $id => $cat) {
+            if ($cat['nivel'] == $nivel && isset($por_pai[$id])) {
+                $total_despesas = 0;
+                $total_budget = 0;
+                
+                foreach ($por_pai[$id] as $id_filho) {
+                    $total_despesas += $por_id[$id_filho]['total_despesas'];
+                    $total_budget += $por_id[$id_filho]['budget'];
+                }
+                
+                $por_id[$id]['total_despesas'] = $total_despesas;
+                $por_id[$id]['budget'] = $total_budget;
+                $por_id[$id]['delta'] = $total_budget - $total_despesas;
+            }
+        }
+    }
+    
+    // Adicionar total global
+    $total_global = [
+        'id' => 0,
+        'numero_conta' => 'TOTAL',
+        'descricao' => 'TOTAL GLOBAL',
+        'nivel' => 0,
+        'budget' => 0,
+        'total_despesas' => 0,
+        'delta' => 0
+    ];
+    
+    foreach ($por_id as $cat) {
+        if ($cat['nivel'] == 1) {
+            $total_global['budget'] += $cat['budget'];
+            $total_global['total_despesas'] += $cat['total_despesas'];
+        }
+    }
+    
+    $total_global['delta'] = $total_global['budget'] - $total_global['total_despesas'];
+    $por_id[0] = $total_global;
+    
+    return $por_id;
+}
+
+/**
+ * 7.5 REGISTRAR DESPESA
+ * Creates new expense record with validation and file handling
+ * @param PDO $pdo Database connection
+ * @param int $projeto_id Project ID
+ * @param int $categoria_id Category ID
+ * @param string $fornecedor Supplier name
+ * @param string $tipo Expense type (goods/services)
+ * @param float $valor Expense amount
+ * @param string $descricao Expense description
+ * @param string $data_despesa Date in Y-m-d format
+ * @param int $usuario_id User ID who registered the expense
+ * @param string|null $anexo_path Optional path to attached file
+ * @return int|bool ID of created expense or false on failure
+ */
+function registrarDespesa($pdo, $projeto_id, $categoria_id, $fornecedor, $tipo, $valor, $descricao, $data_despesa, $usuario_id, $anexo_path = null) {
+    try {
+        // Validação de entrada
+        if (!is_numeric($projeto_id) || $projeto_id <= 0) {
+            throw new InvalidArgumentException("ID do projeto inválido");
+        }
+        
+        if (!is_numeric($categoria_id) || $categoria_id <= 0) {
+            throw new InvalidArgumentException("ID da categoria inválido");
+        }
+        
+        $fornecedor = trim($fornecedor);
+        if (empty($fornecedor)) {
+            throw new InvalidArgumentException("Fornecedor não pode estar vazio");
+        }
+        
+        $valor = str_replace(',', '.', $valor);
+        if (!is_numeric($valor) || $valor <= 0) {
+            throw new InvalidArgumentException("Valor deve ser um número positivo");
+        }
+        
+        if (!in_array($tipo, ['goods', 'services'])) {
+            throw new InvalidArgumentException("Tipo inválido");
+        }
+        
+        $descricao = trim($descricao);
+        if (empty($descricao)) {
+            throw new InvalidArgumentException("Descrição não pode estar vazia");
+        }
+        
+        // Validar formato da data
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data_despesa)) {
+            throw new InvalidArgumentException("Formato de data inválido (YYYY-MM-DD)");
+        }
+        
+        // Iniciar transação
+        $pdo->beginTransaction();
+        
+        // Verificar ou criar fornecedor
+        $fornecedor_id = null;
+        $stmt = $pdo->prepare("SELECT id FROM fornecedores WHERE LOWER(nome) = LOWER(:nome)");
+        $stmt->bindParam(':nome', $fornecedor, PDO::PARAM_STR);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result) {
+            $fornecedor_id = $result['id'];
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO fornecedores (nome) VALUES (:nome)");
+            $stmt->bindParam(':nome', $fornecedor, PDO::PARAM_STR);
+            $stmt->execute();
+            $fornecedor_id = $pdo->lastInsertId();
+        }
+        
+        // Registrar despesa
+        $stmt = $pdo->prepare("
+            INSERT INTO despesas 
+                (projeto_id, categoria_id, fornecedor_id, tipo, valor, 
+                descricao, data_despesa, registrado_por, anexo_path, data_registro)
+            VALUES 
+                (:projeto_id, :categoria_id, :fornecedor_id, :tipo, :valor,
+                :descricao, :data_despesa, :registrado_por, :anexo_path, NOW())
+        ");
+        
+        $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+        $stmt->bindParam(':categoria_id', $categoria_id, PDO::PARAM_INT);
+        $stmt->bindParam(':fornecedor_id', $fornecedor_id, PDO::PARAM_INT);
+        $stmt->bindParam(':tipo', $tipo, PDO::PARAM_STR);
+        $stmt->bindParam(':valor', $valor, PDO::PARAM_STR);
+        $stmt->bindParam(':descricao', $descricao, PDO::PARAM_STR);
+        $stmt->bindParam(':data_despesa', $data_despesa, PDO::PARAM_STR);
+        $stmt->bindParam(':registrado_por', $usuario_id, PDO::PARAM_INT);
+        $stmt->bindParam(':anexo_path', $anexo_path, PDO::PARAM_STR);
+        
+        $stmt->execute();
+        $despesa_id = $pdo->lastInsertId();
+        
+        // Atualizar somas das categorias pai
+        atualizarSomasDespesasCategoriasPai($pdo, $categoria_id, $valor, $usuario_id);
+        
+        $pdo->commit();
+        return $despesa_id;
+        
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("Erro ao registrar despesa: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+/**
+ * 7.6 ATUALIZAR SOMAS DAS CATEGORIAS PAI
+ * Updates parent category totals recursively
+ * @param PDO $pdo Database connection
+ * @param int $categoria_id Category ID
+ * @param float $valor Amount to add
+ * @param int $usuario_id User ID making the change
+ * @return bool Success status
+ */
+function atualizarSomasDespesasCategoriasPai($pdo, $categoria_id, $valor, $usuario_id) {
+    try {
+        // Obter categoria atual
+        $stmt = $pdo->prepare("
+            SELECT categoria_pai_id
+            FROM categorias
+            WHERE id = :categoria_id
+        ");
+        $stmt->bindParam(':categoria_id', $categoria_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $categoria = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$categoria) {
+            return false;
+        }
+        
+        // Se tiver pai, atualizar recursivamente
+        if ($categoria['categoria_pai_id']) {
+            atualizarSomasDespesasCategoriasPai($pdo, $categoria['categoria_pai_id'], $valor, $usuario_id);
+        }
+        
+        return true;
+        
+    } catch (Exception $e) {
+        error_log("Erro ao atualizar totais das categorias pai: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * 7.7 OBTER HISTÓRICO DE EDIÇÕES DE DESPESA
+ * Gets edit history for an expense record
+ * @param PDO $pdo Database connection
+ * @param int $despesa_id Expense ID
+ * @return array Edit history records
+ */
+function obterHistoricoEdicoesDespesa($pdo, $despesa_id) {
+    try {
+        // Validação de entrada
+        if (!is_numeric($despesa_id) || $despesa_id <= 0) {
+            throw new InvalidArgumentException("ID da despesa inválido");
+        }
+        
+        $stmt = $pdo->prepare("
+            SELECT 
+                h.data_edicao, h.campo_alterado, h.valor_anterior, h.valor_novo,
+                u.nome as usuario_nome
+            FROM 
+                historico_edicoes h
+            JOIN 
+                usuarios u ON h.editado_por = u.id
+            WHERE 
+                h.tipo_registro = 'despesa' AND h.registro_id = :despesa_id
+            ORDER BY 
+                h.data_edicao DESC
+        ");
+        
+        $stmt->bindParam(':despesa_id', $despesa_id, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+    } catch (PDOException $e) {
+        error_log("Erro ao obter histórico de edições: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * 7.8 OBTER HISTÓRICO DE EXCLUSÕES
+ * Gets deletion history records for a project
+ * @param PDO $pdo Database connection
+ * @param int $projeto_id Project ID
+ * @param string|null $tipo Optional filter by record type
+ * @return array Deletion history records
+ */
+function obterHistoricoExclusoes($pdo, $projeto_id, $tipo = null) {
+    try {
+        // Validação de entrada
+        if (!is_numeric($projeto_id) || $projeto_id <= 0) {
+            throw new InvalidArgumentException("ID do projeto inválido");
+        }
+        
+        $sql = "
+            SELECT 
+                h.id, h.tipo_registro, h.registro_id, h.data_exclusao,
+                h.informacoes_registro, u.nome as usuario_nome
+            FROM 
+                historico_exclusoes h
+            JOIN 
+                usuarios u ON h.excluido_por = u.id
+            WHERE 
+                h.projeto_id = :projeto_id
+        ";
+        
+        if ($tipo !== null) {
+            $sql .= " AND h.tipo_registro = :tipo";
+        }
+        
+        $sql .= " ORDER BY h.data_exclusao DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+        
+        if ($tipo !== null) {
+            $stmt->bindParam(':tipo', $tipo, PDO::PARAM_STR);
+        }
+        
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+    } catch (PDOException $e) {
+        error_log("Erro ao obter histórico de exclusões: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * 7.9 PROCESSAR IMPORTAÇÃO CSV
+ * Imports expense categories from CSV file
+ * @param PDO $pdo Database connection
+ * @param string $tmp_name Temporary file path
+ * @param int $projeto_id Project ID to associate items with
+ * @param int $usuario_id User ID performing the import
+ * @return array Result with status and message
+ */
+function processarImportacaoCSV($pdo, $tmp_name, $projeto_id, $usuario_id) {
+    try {
+        // Validação de entrada
+        if (!is_numeric($projeto_id) || $projeto_id <= 0) {
+            throw new InvalidArgumentException("ID do projeto inválido");
+        }
+        
+        if (!file_exists($tmp_name) || !is_readable($tmp_name)) {
+            throw new InvalidArgumentException("Arquivo CSV inacessível");
+        }
+        
+        // Verificar tipo de arquivo
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($tmp_name);
+        $allowed_mimes = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'];
+        
+        if (!in_array($mime, $allowed_mimes)) {
+            throw new InvalidArgumentException("Tipo de arquivo inválido. Apenas arquivos CSV são permitidos.");
+        }
+        
+        // Detectar delimitador
+        $delimitadores = [',', ';', "\t"];
+        $melhor_delimitador = ',';
+        $max_campos = 0;
+        
+        $amostra = file_get_contents($tmp_name, false, null, 0, 1024);
+        
+        foreach ($delimitadores as $delimitador) {
+            $campos = str_getcsv($amostra, $delimitador);
+            $num_campos = count($campos);
+            
+            if ($num_campos > $max_campos) {
+                $max_campos = $num_campos;
+                $melhor_delimitador = $delimitador;
+            }
+        }
+        
+        // Iniciar transação
+        $pdo->beginTransaction();
+        
+        // Ler e processar arquivo
+        $handle = fopen($tmp_name, 'r');
+        $header = fgetcsv($handle, 0, $melhor_delimitador);
+        
+        if (count($header) < 3) {
+            throw new InvalidArgumentException("Cabeçalho do CSV inválido. São necessárias pelo menos 3 colunas.");
+        }
+        
+        $contador = 0;
+        $categorias = [];
+        
+        while (($data = fgetcsv($handle, 0, $melhor_delimitador)) !== false) {
+            if (count($data) < 3) {
+                continue; // Pular linhas inválidas
+            }
+            
+            $numero_conta = trim($data[0]);
+            $descricao = trim($data[1]);
+            $budget = str_replace(',', '.', trim($data[2]));
+            
+            // Validações básicas
+            if (empty($numero_conta) || empty($descricao) || !is_numeric($budget)) {
+                continue;
+            }
+            
+            // Determinar nível e categoria pai
+            $nivel = substr_count($numero_conta, '.') + 1;
+            $categoria_pai_id = null;
+            
+            if ($nivel > 1) {
+                $partes = explode('.', $numero_conta);
+                array_pop($partes);
+                $numero_pai = implode('.', $partes);
+                
+                if (isset($categorias[$numero_pai])) {
+                    $categoria_pai_id = $categorias[$numero_pai];
+                } else {
+                    throw new RuntimeException("Categoria pai '$numero_pai' não encontrada para '$numero_conta'");
+                }
+            }
+            
+            // Inserir categoria
+            $stmt = $pdo->prepare("
+                INSERT INTO categorias 
+                    (projeto_id, numero_conta, descricao, budget, categoria_pai_id, nivel)
+                VALUES 
+                    (:projeto_id, :numero_conta, :descricao, :budget, :categoria_pai_id, :nivel)
+            ");
+            
+            $stmt->bindParam(':projeto_id', $projeto_id, PDO::PARAM_INT);
+            $stmt->bindParam(':numero_conta', $numero_conta, PDO::PARAM_STR);
+            $stmt->bindParam(':descricao', $descricao, PDO::PARAM_STR);
+            $stmt->bindParam(':budget', $budget, PDO::PARAM_STR);
+            $stmt->bindParam(':categoria_pai_id', $categoria_pai_id, PDO::PARAM_INT);
+            $stmt->bindParam(':nivel', $nivel, PDO::PARAM_INT);
+            
+            $stmt->execute();
+            $categoria_id = $pdo->lastInsertId();
+            $categorias[$numero_conta] = $categoria_id;
+            
+            $contador++;
+        }
+        
+        fclose($handle);
+        
+        // Registrar log de importação
+        $stmt = $pdo->prepare("
+            INSERT INTO logs_sistema 
+                (tipo, acao, usuario_id, detalhes)
+            VALUES 
+                ('importacao', 'csv_categorias', :usuario_id, :detalhes)
+        ");
+        
+        $detalhes = json_encode([
+            'projeto_id' => $projeto_id,
+            'total_categorias' => $contador,
+            'data' => date('Y-m-d H:i:s')
+        ]);
+        
+        $stmt->bindParam(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        $stmt->bindParam(':detalhes', $detalhes, PDO::PARAM_STR);
+        $stmt->execute();
+        
+        $pdo->commit();
+        
+        return [
+            'status' => true,
+            'mensagem' => "Importação concluída com sucesso. $contador categorias importadas.",
+            'total' => $contador
+        ];
+        
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        
+        error_log("Erro na importação CSV: " . $e->getMessage());
+        
+        return [
+            'status' => false,
+            'mensagem' => "Erro na importação: " . $e->getMessage(),
+            'total' => 0
+        ];
+    }
 }
 
 // 8.0 HISTORY AND AUDIT FUNCTIONS

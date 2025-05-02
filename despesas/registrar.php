@@ -45,19 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] == 0) {
             $upload_dir = '/mnt/Dados/facturas/';
             
-            // Verificar se o diretório existe e tem permissões
-            if (!is_dir($upload_dir)) {
-                error_log("Erro: Diretório de anexos não encontrado: " . $upload_dir);
-                // Tentar criar o diretório, se possível
-                try {
-                    mkdir($upload_dir, 0755, true);
-                } catch (Exception $e) {
-                    error_log("Erro ao criar diretório de anexos: " . $e->getMessage());
-                    throw new RuntimeException("Não foi possível criar o diretório de anexos.");
-                }
-            } elseif (!is_writable($upload_dir)) {
-                error_log("Erro: Diretório de anexos sem permissão de escrita: " . $upload_dir);
-                throw new RuntimeException("Diretório de anexos sem permissão de escrita.");
+            // Verificar se o diretório existe e tem permissões usando a função utilitária
+            try {
+                ensureUploadsDirectory($upload_dir);
+            } catch (RuntimeException $e) {
+                error_log("Erro ao acessar diretório de anexos: " . $e->getMessage());
+                $mensagem = "Erro no sistema de armazenamento. Por favor, tente novamente mais tarde.";
+                $tipo_mensagem = 'danger';
+                goto skip_attachment; // Pular o processamento do anexo
             }
             
             $file_name = time() . '_' . basename($_FILES['anexo']['name']);
@@ -78,6 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $tipo_mensagem = 'danger';
             }
         }
+        
+        skip_attachment: // Label para pular o processamento do anexo
         
         if (empty($mensagem)) {
             try {
